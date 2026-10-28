@@ -141,7 +141,8 @@
   };
   async function fetchJSON(path, tries = 3) {
     for (let i = 0; ; i++) {
-      try { const r = await fetch(path); if (!r.ok) throw new Error(r.status); return await r.json(); }
+      // HS_VER (set by the website build) makes each release fetch fresh data instead of a cached copy
+      try { const r = await fetch(window.HS_VER ? `${path}?v=${window.HS_VER}` : path); if (!r.ok) throw new Error(r.status); return await r.json(); }
       catch (e) { if (i >= tries - 1) throw e; await sleep(400 * (i + 1)); }
     }
   }
