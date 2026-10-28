@@ -20,7 +20,7 @@
   function statusOf(id) { const p = store.progress[id]; return !p ? "unseen" : p[3] ? "correct" : "incorrect"; }
   function domainStats() {
     const s = Array.from({ length: 21 }, () => ({ att: 0, cor: 0, seen: 0 }));
-    for (const [id, p] of Object.entries(store.progress)) { const d = Math.ceil(id / 50); s[d].seen += 1; s[d].att += p[0]; s[d].cor += p[1]; }
+    for (const [id, p] of Object.entries(store.progress)) { const d = content.setOf(id); s[d].seen += 1; s[d].att += p[0]; s[d].cor += p[1]; }
     return s;
   }
   function empty(title, text, action) { return h("div", { class: "empty" }, h("h3", { text: title }), text ? h("p", { text }) : null, action || null); }
@@ -40,7 +40,7 @@
       id: HS.uid(), mode, title, qids: qids.slice(), idx: 0, answers: {}, secs: {}, marked: [], perm: {},
       limitSec: limitSec || 0, remainSec: limitSec || 0, status: "active", createdAt: Date.now(), updatedAt: Date.now(),
     };
-    if (store.settings.shuffle && mode !== "single") for (const id of s.qids) s.perm[id] = shuffle(LET).join("");
+    if (store.settings.shuffle && mode !== "single") for (const id of s.qids) s.perm[id] = shuffle(content.letters(id)).join("");
     return s;
   }
   function startSession(opts) {
@@ -69,8 +69,8 @@
     const weekStart = dayKey(new Date(Date.now() - 6 * 864e5));
     const weekSec = Object.entries(store.activity).filter(([k]) => k >= weekStart).reduce((a, [, v]) => a + v[2], 0);
     const ds = Array.from({ length: 21 }, () => ({ att: 0, cor: 0, seen: 0, total: 0 }));
-    for (const id of trackSet) ds[Math.ceil(id / 50)].total += 1;
-    for (const [id, p] of Object.entries(prog)) { const d = ds[Math.ceil(id / 50)]; d.seen += 1; d.att += p[0]; d.cor += p[1]; }
+    for (const id of trackSet) ds[content.setOf(id)].total += 1;
+    for (const [id, p] of Object.entries(prog)) { const d = ds[content.setOf(id)]; d.seen += 1; d.att += p[0]; d.cor += p[1]; }
     // readiness: recency-weighted accuracy of latest answers (2-week half-life) blended with domain coverage
     let wSum = 0, wOk = 0; const now = Date.now();
     for (const p of Object.values(prog)) { const w = Math.pow(0.5, (now - p[2]) / (14 * 864e5)); wSum += w; wOk += w * p[3]; }
@@ -88,7 +88,7 @@
 
     // today's plan: due reviews + the daily share of unseen questions before the exam
     const due = smartQueue();
-    const unseen = []; for (let i = 1; i <= 1000; i++) if (trackSet.has(i) && !prog[i]) unseen.push(i);
+    const unseen = content.lite.map((q) => q.id).filter((i) => trackSet.has(i) && !prog[i]);
     const autoNew = daysLeft && daysLeft > 0 ? Math.ceil(unseen.length / daysLeft) : 40;
     const newTarget = Math.min(unseen.length, store.settings.dailyNew || Math.min(150, autoNew));
     const dueTarget = Math.min(due.length, 40);
@@ -156,7 +156,7 @@
     const qFoot = h("div", { class: "row", style: "margin-top:10px" });
     const answeredToday = prog[qid] && dayKey(new Date(prog[qid][2])) === dayKey();
     function drawQ(choice) {
-      qBox.replaceChildren(...LET.map((L) => {
+      qBox.replaceChildren(...Object.keys(q.options).map((L) => {
         const reveal = !!choice;
         const cls = "opt" + (reveal && L === q.correctAnswer ? " correct" : reveal && L === choice && L !== q.correctAnswer ? " wrong" : "");
         return h("button", { class: cls, type: "button", disabled: reveal, onclick: () => answerQ(L) }, h("span", { class: "L" }, L), h("span", {}, q.options[L]), h("span"));
@@ -234,8 +234,8 @@
   function stat(label, value, sub, title) { return h("div", { class: "stat", title: title || null }, h("span", { class: "l" }, label), h("span", { class: "v" }, value), h("span", { class: "small faint" }, sub)); }
   function range(a, b) { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; }
   function practiseDomain(n) {
-    let ids = range((n - 1) * 50 + 1, n * 50).filter((i) => HS.inTrack(i));
-    if (!ids.length) ids = range((n - 1) * 50 + 1, n * 50);
+    let ids = content.domainIds(n).filter((i) => HS.inTrack(i));
+    if (!ids.length) ids = content.domainIds(n).slice();
     const order = ids.filter((i) => statusOf(i) === "incorrect").concat(ids.filter((i) => statusOf(i) === "unseen"), ids.filter((i) => statusOf(i) === "correct"));
     startSession({ mode: "tutor", title: `Practise: ${content.setTitle(n)}`, qids: relatedConflictFree(order).slice(0, 20) });
   }
@@ -255,8 +255,8 @@
       subSel.replaceChildren(h("option", { value: "" }, "All subtopics"));
       if (!S.set) { subSel.disabled = true; return; }
       subSel.disabled = false;
-      const lo = (S.set - 1) * 50 + 1, hi = S.set * 50; const seen = new Map();
-      for (const [topic, sub, ids] of m.index) { const inSet = ids.filter((i) => i >= lo && i <= hi); if (!inSet.length) continue; const k = sub ? `${topic} — ${sub}` : topic; seen.set(k, (seen.get(k) || []).concat(inSet)); }
+      const seen = new Map();
+      for (const [topic, sub, ids] of m.index) { const inSet = ids.filter((i) => content.setOf(i) === S.set); if (!inSet.length) continue; const k = sub ? `${topic} — ${sub}` : topic; seen.set(k, (seen.get(k) || []).concat(inSet)); }
       for (const [k, ids] of [...seen.entries()].sort()) subSel.append(h("option", { value: ids.join(","), selected: S.sub === ids.join(",") }, `${k} (${ids.length})`));
     }
     function filtered() {
@@ -293,7 +293,7 @@
     const due = smartQueue();
     const startTutor = () => { if (!current.length) return; startSession({ mode: "tutor", title: params.label || describeFilter(), qids: relatedConflictFree(current.map((q) => q.id)) }); };
     return h("div", {},
-      pageHead(t("bank"), "Browse all 1,000 questions, filter them, and start a tutor session, a timed block or a smart review.", [homeCrumb(), { label: t("bank") }],
+      pageHead(t("bank"), "Browse all 1,335 questions, filter them, and start a tutor session, a timed block or a smart review.", [homeCrumb(), { label: t("bank") }],
         [h("button", { class: "btn", type: "button", onclick: () => due.length ? startSession({ mode: "review", title: "Smart review", qids: due.slice(0, 25) }) : HS.toast("Nothing is due for review yet. Answer some questions first.") }, `${t("review")} (${due.length} due)`),
          h("button", { class: "btn", type: "button", onclick: () => timedDialog(current.map((q) => q.id), params.label || describeFilter()) }, t("timed") + "…"),
          h("button", { class: "btn primary", type: "button", onclick: startTutor }, `${t("tutor")}: start`)]),
@@ -376,7 +376,7 @@
     document.addEventListener("visibilitychange", onVis);
     window.addEventListener("pagehide", onVis);
 
-    function letterMap(qid) { const p = s.perm[qid]; return p ? p.split("") : LET; } // display index -> original letter
+    function letterMap(qid) { const p = s.perm[qid]; return p ? p.split("") : content.letters(qid); } // display index -> original letter
     function draw() {
       const qid = s.qids[s.idx], q = qs.get(qid), ans = s.answers[qid];
       const map = letterMap(qid);
@@ -441,7 +441,7 @@
         h("h3", { style: `color:var(--${ok ? "ok" : "bad"})` }, ok ? "Correct" : `Incorrect — the answer is ${displayLetter(q.id, q.correctAnswer)}`),
         q.updateNote ? h("div", { class: "upd-box" }, h("strong", {}, "Updated 2025–2026: "), q.updateNote, q.updateSource ? h("div", { class: "small", style: "margin-top:4px" }, "Source: " + q.updateSource) : null) : null,
         ltr(h("p", {}, q.explanation)),
-        ltr(h("div", { class: "ref-line" }, h("strong", {}, t("reference") + ": "), q.referenceText || "", refIds.length ? h("div", { class: "row", style: "gap:6px;margin-top:6px" }, refIds.map((r) => h("button", { class: "chip", type: "button", onclick: () => HS.go("references", { q: String(r), focus: r }) }, `[${r}]`))) : null)),
+        q.referenceText || refIds.length ? ltr(h("div", { class: "ref-line" }, h("strong", {}, t("reference") + ": "), q.referenceText || "", refIds.length ? h("div", { class: "row", style: "gap:6px;margin-top:6px" }, refIds.map((r) => h("button", { class: "chip", type: "button", onclick: () => HS.go("references", { q: String(r), focus: r }) }, `[${r}]`))) : null)) : null,
         q.related.length ? h("div", { class: "ref-line" }, h("strong", {}, "Related concept: "), "this idea is also tested in ", q.related.map((r) => qChip(r)), h("span", { class: "small faint" }, " (kept out of the same block so neither gives the other away)")) : null,
         q.trials.length ? h("div", { class: "ref-line" }, h("strong", {}, "Trials: "), q.trials.map((tr) => h("button", { class: "chip", type: "button", onclick: () => HS.go("trials", { q: tr.name }) }, tr.name))) : null,
         h("div", { class: "field", style: "margin-top:12px" }, h("label", { for: "noteBox" }, t("notes")), noteBox));
@@ -492,7 +492,7 @@
       const k = e.key.toUpperCase(); const qid = s.qids[s.idx];
       const map = letterMap(qid);
       let i = LET.indexOf(k); if (i < 0 && /^[1-5]$/.test(k)) i = Number(k) - 1;
-      if (i >= 0) { choose(map[i]); e.preventDefault(); return; }
+      if (i >= 0 && i < map.length) { choose(map[i]); e.preventDefault(); return; }
       if (k === "ENTER") { const a = s.answers[qid]; if (instant && !(a && a.ok != null)) submitOne(); else if (s.idx < s.qids.length - 1) move(1); else if (!instant) confirmSubmit(); e.preventDefault(); }
       else if (k === "N") move(1); else if (k === "P") move(-1);
       else if (k === "F") { if (instant) flagDialog(qid); else { marked.has(qid) ? marked.delete(qid) : marked.add(qid); persist(); draw(); } }
@@ -530,7 +530,7 @@
     upd();
     function begin() {
       // blueprint: questions from the active study track, spread across domains in proportion to what each domain has
-      const pools = range(1, 20).map((d) => range((d - 1) * 50 + 1, d * 50).filter((i) => HS.inTrack(i)));
+      const pools = range(1, 20).map((d) => content.domainIds(d).filter((i) => HS.inTrack(i)));
       const available = pools.reduce((a, p) => a + p.length, 0);
       len = Math.min(len, available);
       const quota = pools.map((p) => Math.floor((len * p.length) / available));
@@ -612,9 +612,9 @@
             ltr(h("span", { style: "flex:1;min-width:200px" }, q.stem.length > 140 ? q.stem.slice(0, 140) + "…" : q.stem))),
           ltr(h("div", { style: "padding:0 14px 14px" },
             h("p", {}, q.stem),
-            h("div", { class: "opts" }, LET.map((L) => h("div", { class: "opt" + (q.correctAnswer === L ? " correct" : a && a.o === L ? " wrong" : ""), style: "cursor:default" }, h("span", { class: "L" }, L), h("span", {}, q.options[L]), h("span", { class: "tag" }, q.correctAnswer === L ? "Answer" : a && a.o === L ? "Yours" : "")))),
+            h("div", { class: "opts" }, Object.keys(q.options).map((L) => h("div", { class: "opt" + (q.correctAnswer === L ? " correct" : a && a.o === L ? " wrong" : ""), style: "cursor:default" }, h("span", { class: "L" }, L), h("span", {}, q.options[L]), h("span", { class: "tag" }, q.correctAnswer === L ? "Answer" : a && a.o === L ? "Yours" : "")))),
             q.updateNote ? h("div", { class: "upd-box" }, h("strong", {}, "Updated 2025–2026: "), q.updateNote) : null,
-            h("div", { class: "explain", style: "margin-top:12px" }, h("p", { style: "margin-top:0" }, q.explanation), h("div", { class: "ref-line" }, t("reference") + ": " + q.referenceText)))));
+            h("div", { class: "explain", style: "margin-top:12px" }, h("p", { style: "margin-top:0" }, q.explanation), q.referenceText ? h("div", { class: "ref-line" }, t("reference") + ": " + q.referenceText) : null))));
         reviewList.append(det);
       });
     }
@@ -657,17 +657,17 @@
     return h("div", {},
       pageHead(t("topics"), "Structured revision notes for each of the 20 domains, built from the bank's explanations and the cited guidelines.", [homeCrumb(), { label: t("topics") }]),
       h("div", { class: "tile-grid" }, content.meta.sets.map((s) => {
-        const d = ds[s.set];
+        const d = ds[s.set], total = s.ids.length;
         return h("button", { class: "tile", type: "button", onclick: () => HS.go("topic", { n: s.set }) },
-          h("span", { class: "n" }, `DOMAIN ${s.set} · Q${s.range[0]}–${s.range[1]}`), h("h3", {}, s.title),
-          h("div", { class: "progress" }, h("i", { style: `width:${d.seen * 2}%` })),
-          h("span", { class: "small faint" }, `${d.seen}/50 attempted · accuracy ${d.att ? fmtPct(d.cor / d.att) : "—"}`));
+          h("span", { class: "n" }, `DOMAIN ${s.set} · ${total} Qs`), h("h3", {}, s.title),
+          h("div", { class: "progress" }, h("i", { style: `width:${(d.seen / total) * 100}%` })),
+          h("span", { class: "small faint" }, `${d.seen}/${total} attempted · accuracy ${d.att ? fmtPct(d.cor / d.att) : "—"}`));
       })));
   };
   HS.views.topic = async function ({ n }) {
     await content.loadMeta();
     const m = content.meta, setQs = [...(await content.loadSet(n)).values()];
-    const lo = (n - 1) * 50 + 1, hi = n * 50, inSet = (i) => i >= lo && i <= hi;
+    const domIds = content.domainIds(n), inSet = (i) => content.setOf(i) === n;
     const title = content.setTitle(n);
     // subtopics with a key concept: the first sentence of the explanation of the first question indexed under it
     const subs = new Map();
@@ -699,8 +699,8 @@
         h("li", {}, "Prognosticate at ≥72 hours in patients not obeying commands (GCS motor score below 6); bilaterally absent N20 SSEP waves are valid from 24 hours; two or more predictors are required."),
         h("li", {}, "Regular narrow-complex tachycardia: adenosine 6 mg, then 12 mg, then consider 18 mg if side effects are tolerated."))) : null;
     return h("div", {},
-      pageHead(`${n}. ${title}`, `${ds.seen}/50 questions attempted · accuracy ${ds.att ? fmtPct(ds.cor / ds.att) : "—"}`, [homeCrumb(), { label: t("topics"), view: "topics" }, { label: title }],
-        [h("button", { class: "btn", type: "button", onclick: () => HS.go("bank", { ids: range(lo, hi), label: `Domain ${n}: ${title}` }) }, "Browse questions"), h("button", { class: "btn primary", type: "button", onclick: () => practiseDomain(n) }, "Practise now")]),
+      pageHead(`${n}. ${title}`, `${ds.seen}/${domIds.length} questions attempted · accuracy ${ds.att ? fmtPct(ds.cor / ds.att) : "—"}`, [homeCrumb(), { label: t("topics"), view: "topics" }, { label: title }],
+        [h("button", { class: "btn", type: "button", onclick: () => HS.go("bank", { ids: domIds, label: `Domain ${n}: ${title}` }) }, "Browse questions"), h("button", { class: "btn primary", type: "button", onclick: () => practiseDomain(n) }, "Practise now")]),
       h("div", { class: "grid" },
         h("div", { class: "c-8 stack", style: "gap:16px" },
           extra,
@@ -955,10 +955,15 @@
     const tests = window.HS_CALCS.runSelfTests();
     const testsOk = tests.filter((x) => x.ok).length;
     const v = qa.validation;
+    const b2 = qa.bank2, expected = 1000 + (b2 ? b2.added : 0);
     const checks = [
-      ["Questions extracted", `${v.questionCount}`, v.questionCount === 1000],
-      ["Unique ids", `${v.uniqueIds}`, v.uniqueIds === 1000],
-      ["Five options each", v.allHaveFiveOptions ? "Yes" : "No", v.allHaveFiveOptions],
+      ["Questions in the bank", `${v.questionCount}`, v.questionCount === expected],
+      ["Unique ids", `${v.uniqueIds}`, v.uniqueIds === expected],
+      ["Bank 1: five options each", v.allHaveFiveOptions ? "Yes" : "No", v.allHaveFiveOptions],
+      b2 ? ["Bank 2: four options each", v.bank2AllHaveFourOptions ? "Yes" : "No", v.bank2AllHaveFourOptions] : null,
+      b2 ? ["Bank 2: added / duplicates skipped", `${b2.added} added · ${b2.duplicatesSkipped} skipped (of ${b2.received})`, true] : null,
+      b2 ? ["Bank 2: correct option is the longest", `${b2.lengthCue.before.correctLongestPct}% → ${b2.lengthCue.after.correctLongestPct}%`, b2.lengthCue.after.correctLongestPct <= 30] : null,
+      b2 ? ["Bank 2: correct option >1.3× longest distractor", `${b2.lengthCue.before.over1_3x} → ${b2.lengthCue.after.over1_3x}`, b2.lengthCue.after.over1_3x === 0] : null,
       ["Answer grid matches explanation headers", v.answerKeyMatchesExplanationHeaders ? "Yes" : "No", v.answerKeyMatchesExplanationHeaders],
       ["Broken reference ids", `${v.brokenReferences}`, v.brokenReferences === 0],
       ["References", `${v.referenceCountOriginal} original + ${v.referenceCountAdded} added`, true],
@@ -1050,7 +1055,7 @@
       [h("button", { class: "btn", type: "button", onclick: () => download("changelog.csv", "data/changelog.csv", "text/csv") }, "Download changelog (CSV)")]),
       h("div", { class: "grid" },
         h("section", { class: "card c-6" }, h("div", { class: "card-head" }, h("h2", {}, "Validation")),
-          h("table", { class: "t" }, h("tbody", {}, checks.map(([l, val, ok]) => h("tr", {}, h("td", {}, l), h("td", { class: "tnum" }, val), h("td", {}, h("span", { class: "pill " + (ok ? "ok" : "bad") }, ok ? "Pass" : "Fail"))))))),
+          h("table", { class: "t" }, h("tbody", {}, checks.filter(Boolean).map(([l, val, ok]) => h("tr", {}, h("td", {}, l), h("td", { class: "tnum" }, val), h("td", {}, h("span", { class: "pill " + (ok ? "ok" : "bad") }, ok ? "Pass" : "Fail"))))))),
         h("section", { class: "card c-6 stack" }, h("div", { class: "card-head" }, h("h2", {}, "Option-length cue")),
           h("table", { class: "t" }, h("thead", {}, h("tr", {}, h("th", {}, "Measure"), h("th", {}, "Before"), h("th", {}, "After"))),
             h("tbody", {}, [["Correct option longest", `${b.correctLongest} (${b.correctLongestPct}%)`, `${a.correctLongest} (${a.correctLongestPct}%)`], ["Correct ≥1.2× next longest", b.obviousGe1_2x, a.obviousGe1_2x], ["Correct >1.3× longest distractor", b.over1_3x, a.over1_3x], ["Runs of 4+ identical keys", b.runsOver3, a.runsOver3]].map((r) => h("tr", {}, r.map((x) => h("td", { class: "tnum" }, String(x))))))),

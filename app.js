@@ -75,7 +75,7 @@
       reset: "Reset my progress", signedOut: "Sign in to save progress",
       notebook: "My Notes", notebookShort: "Notes",
       track: "Study track", trackOne: "Part I", trackTwo: "Part II", trackAll: "All parts",
-      trackOneNote: "Part I: applied basic sciences (about 140 questions so far).", trackTwoNote: "Part II: clinical critical care (about 860 questions).", trackAllNote: "All 1,000 questions.",
+      trackOneNote: "Part I: applied basic sciences (about 155 questions so far).", trackTwoNote: "Part II: clinical critical care (about 1,180 questions).", trackAllNote: "All 1,335 questions.",
       morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening",
       daysLeft: "days to your exam", setExam: "Set your exam date", examToday: "Your exam is today", examPassed: "Exam date has passed",
       readiness: "Readiness", attempted: "Attempted", accuracy: "Accuracy", streak: "Streak", studyWeek: "Study time · 7 days",
@@ -101,7 +101,7 @@
       reset: "إعادة ضبط تقدّمي", signedOut: "سجّل الدخول لحفظ التقدّم",
       notebook: "ملاحظاتي", notebookShort: "ملاحظاتي",
       track: "مسار المذاكرة", trackOne: "الجزء الأول", trackTwo: "الجزء الثاني", trackAll: "كل الأجزاء",
-      trackOneNote: "الجزء الأول: العلوم الأساسية التطبيقية (حوالي ١٤٠ سؤالًا حاليًا).", trackTwoNote: "الجزء الثاني: العناية المركزة الإكلينيكية (حوالي ٨٦٠ سؤالًا).", trackAllNote: "كل الأسئلة الـ ١٠٠٠.",
+      trackOneNote: "الجزء الأول: العلوم الأساسية التطبيقية (حوالي ١٥٥ سؤالًا حاليًا).", trackTwoNote: "الجزء الثاني: العناية المركزة الإكلينيكية (حوالي ١١٨٠ سؤالًا).", trackAllNote: "كل الأسئلة الـ ١٣٣٥.",
       morning: "صباح الخير", afternoon: "مساء الخير", evening: "مساء الخير",
       daysLeft: "يومًا على امتحانك", setExam: "حدّد تاريخ امتحانك", examToday: "امتحانك اليوم", examPassed: "مرّ تاريخ الامتحان",
       readiness: "الجاهزية", attempted: "تمت محاولتها", accuracy: "الدقة", streak: "أيام متتالية", studyWeek: "وقت المذاكرة · ٧ أيام",
@@ -125,7 +125,10 @@
       for (const q of l) this.liteById.set(q.id, q);
       return m;
     },
-    setOf: (id) => Math.ceil(id / 50),
+    // domain of a question: ids 1–1000 are 50 per domain; later banks (1001+) carry their domain in the lite index
+    setOf: (id) => { const l = content.liteById.get(Number(id)); return l ? l.s : Math.ceil(id / 50); },
+    domainIds(n) { return this.meta.sets[n - 1].ids; },
+    letters(id) { const l = content.liteById.get(Number(id)); return l && l.o === 4 ? ["A", "B", "C", "D"] : ["A", "B", "C", "D", "E"]; },
     async loadSet(n) {
       if (!this.sets.has(n)) this.sets.set(n, fetchJSON(`data/set-${pad2(n)}.json`).then((arr) => { const m = new Map(arr.map((q) => [q.id, q])); this.sets.set(n, m); return m; }));
       return this.sets.get(n);
@@ -323,7 +326,7 @@
     const byDomain = {};
     let att = 0, cor = 0, attempted = 0;
     for (const [id, p] of Object.entries(store.progress)) {
-      const s = Math.ceil(id / 50); byDomain[s] = byDomain[s] || [0, 0];
+      const s = content.setOf(id); byDomain[s] = byDomain[s] || [0, 0];
       byDomain[s][0] += 1; byDomain[s][1] += p[3];
       attempted += 1; att += p[0]; cor += p[1];
     }

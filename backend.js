@@ -170,7 +170,7 @@
         const head = el("h2");
         head.innerHTML = lang === "ar" ? "ذاكر بثبات <em>نفَسًا بعد نفَس</em> حتى يوم الامتحان." : "Steady preparation, <em>breath by breath</em>, until exam day.";
         const facts = el("div", "facts");
-        for (const [v, k] of lang === "ar" ? [["1000", "سؤال"], ["20", "مجالًا"], ["32", "حاسبة"], ["82", "تجربة"]] : [["1,000", "questions"], ["20", "domains"], ["32", "calculators"], ["82", "trials"]]) {
+        for (const [v, k] of lang === "ar" ? [["1335", "سؤال"], ["20", "مجالًا"], ["32", "حاسبة"], ["84", "تجربة"]] : [["1,335", "questions"], ["20", "domains"], ["32", "calculators"], ["84", "trials"]]) {
           const r = el("div", "mon-readout"); r.append(Object.assign(el("div", "v"), { textContent: v }), Object.assign(el("div", "k"), { textContent: k })); facts.append(r);
         }
         side.append(trace, brand, wrap(el("div", "", "display:flex;flex-direction:column;gap:14px"), head,
