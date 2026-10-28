@@ -945,6 +945,126 @@
           h("div", {}, h("button", { class: "btn danger", type: "button", onclick: reset, disabled: store.mode === "cloud" && HS.queue.fatal }, t("reset"))))));
   };
 
+  /* ------------------------------------------------------------------ users (admin, website accounts) */
+  const usersState = { q: "", filter: "all", sort: "joined" };
+  HS.views.users = async function () {
+    const AR = HS.lang === "ar", L = (en, ar) => (AR ? ar : en);
+    const be = window.HS_BACKEND;
+    if (!store.isAdmin || !be || store.mode !== "cloud") return h("div", {}, pageHead(t("users")), empty(L("Administrators only", "للمسؤولين فقط"), L("User management is available on the website to administrators.", "إدارة المستخدمين متاحة على الموقع للمسؤولين فقط.")));
+    let rows = [];
+    try { rows = await be.learners(); }
+    catch (e) { return h("div", {}, pageHead(t("users")), empty(L("Users could not load", "تعذّر تحميل المستخدمين"), L("Check your connection and try again.", "تأكد من الاتصال وحاول مرة أخرى."), h("button", { class: "btn", type: "button", onclick: () => HS.render() }, L("Try again", "إعادة المحاولة")))); }
+    const S = usersState, now = Date.now(), week = now - 7 * 864e5;
+    const ts = (v) => (v ? new Date(v).getTime() : 0);
+    const lastActive = (r) => Math.max(ts(r.statsUpdatedAt), r.stats && r.stats.updatedAt ? r.stats.updatedAt : 0);
+    function rel(t0) {
+      if (!t0) return L("never", "لم يحدث");
+      const m = Math.round((now - t0) / 6e4);
+      if (m < 1) return L("just now", "الآن");
+      if (m < 60) return L(`${m} min ago`, `منذ ${m} دقيقة`);
+      const hr = Math.round(m / 60); if (hr < 24) return L(`${hr} h ago`, `منذ ${hr} ساعة`);
+      const d = Math.round(hr / 24); return d < 30 ? L(`${d} d ago`, `منذ ${d} يوم`) : fmtDate(t0);
+    }
+    const errText = (e) => {
+      const m = String((e && e.message) || "");
+      const map = [[/own account|own administrator/i, L("You cannot do this to your own account.", "لا يمكنك تنفيذ هذا على حسابك أنت.")],
+        [/Remove administrator rights/i, L("Remove administrator rights first.", "أزل صلاحية المسؤول أولًا.")],
+        [/Reactivate this account/i, L("Reactivate the account first.", "أعد تفعيل الحساب أولًا.")],
+        [/Only administrators/i, L("Administrators only.", "للمسؤولين فقط.")]];
+      for (const [rx, txt] of map) if (rx.test(m)) return txt;
+      return m || L("The action could not be completed.", "تعذّر تنفيذ الإجراء.");
+    };
+    async function act(fn, okMsg) { try { await fn(); HS.toast(okMsg); HS.render(); } catch (e) { HS.toast(errText(e)); } }
+
+    function resetPin(r) {
+      const pin = h("input", { class: "input", id: "newPin", type: "text", inputmode: "numeric", maxlength: "8", placeholder: L("4–8 digits", "٤–٨ أرقام"), dir: "ltr" });
+      HS.confirm({ title: L(`New PIN for ${r.name}`, `رمز جديد لـ ${r.name}`), ok: L("Set PIN", "حفظ الرمز"), cancel: L("Cancel", "إلغاء"),
+        body: h("div", { class: "stack" }, h("p", { class: "muted small", style: "margin:0" }, L("Give the new PIN to the learner privately. Their progress is kept.", "أعطِ الرمز الجديد للدارس بشكل خاص. تقدّمه يظل محفوظًا.")), h("div", { class: "field" }, h("label", { for: "newPin" }, L("New PIN", "الرمز الجديد")), pin)) })
+        .then((ok) => { if (ok) act(() => be.resetPin(r.id, r.name, pin.value.trim()), L("PIN updated", "تم تغيير الرمز")); });
+    }
+    function suspend(r) {
+      const on = !r.suspended;
+      HS.confirm({ title: on ? L(`Suspend ${r.name}?`, `إيقاف حساب ${r.name}؟`) : L(`Reactivate ${r.name}?`, `إعادة تفعيل حساب ${r.name}؟`),
+        body: on ? L("They are signed out now and cannot sign in until you reactivate the account. Their progress is kept.", "سيتم تسجيل خروجه فورًا ولن يستطيع الدخول حتى تعيد تفعيل الحساب. تقدّمه يظل محفوظًا.")
+          : L("They can sign in again with their name and PIN.", "سيستطيع الدخول مرة أخرى باسمه ورمزه."),
+        ok: on ? L("Suspend", "إيقاف") : L("Reactivate", "إعادة التفعيل"), cancel: L("Cancel", "إلغاء"), danger: on })
+        .then((ok) => { if (ok) act(() => be.setSuspended(r.id, on), on ? L("Account suspended", "تم إيقاف الحساب") : L("Account reactivated", "تم تفعيل الحساب")); });
+    }
+    function toggleAdmin(r) {
+      const on = !r.isAdmin;
+      HS.confirm({ title: on ? L(`Make ${r.name} an administrator?`, `جعل ${r.name} مسؤولًا؟`) : L(`Remove administrator rights from ${r.name}?`, `إزالة صلاحية المسؤول من ${r.name}؟`),
+        body: on ? L("Administrators see every learner's totals, manage users and resolve question reports.", "المسؤول يرى إحصائيات كل الدارسين ويدير المستخدمين ويراجع بلاغات الأسئلة.") : L("They keep their account and progress as a normal learner.", "سيحتفظ بحسابه وتقدّمه كدارس عادي."),
+        ok: on ? L("Make administrator", "اجعله مسؤولًا") : L("Remove rights", "إزالة الصلاحية"), cancel: L("Cancel", "إلغاء"), danger: !on })
+        .then((ok) => { if (ok) act(() => be.setAdmin(r.id, on), L("Role updated", "تم تحديث الصلاحية")); });
+    }
+    function remove(r) {
+      let typed = "";
+      const inp = h("input", { class: "input", id: "delConfirm", autocomplete: "off" });
+      HS.confirm({ title: L(`Delete ${r.name} permanently?`, `حذف حساب ${r.name} نهائيًا؟`), danger: true, ok: L("Delete permanently", "حذف نهائي"), cancel: L("Cancel", "إلغاء"),
+        body: h("div", { class: "stack" }, h("p", { style: "margin:0" }, L("This deletes the account, progress, notes, exam history and reports. It cannot be undone.", "سيتم حذف الحساب والتقدّم والملاحظات وسجل الامتحانات والبلاغات. لا يمكن التراجع.")),
+          h("div", { class: "field" }, h("label", { for: "delConfirm" }, L(`Type the name to confirm: ${r.name}`, `اكتب الاسم للتأكيد: ${r.name}`)), inp)),
+        okDisabled: (btn) => { btn.disabled = true; inp.oninput = () => { typed = inp.value; btn.disabled = typed.trim() !== (r.name || "").trim(); }; } })
+        .then((ok) => { if (ok && typed.trim() === (r.name || "").trim()) act(() => be.deleteUser(r.id), L("Account deleted", "تم حذف الحساب")); });
+    }
+    function exportCsv() {
+      const head = ["Name", "Role", "Status", "Joined", "Last sign-in", "Last practice", "Attempted", "Accuracy %", "Exams", "Last exam %"];
+      const lines = [head].concat(rows.map((r) => { const s = r.stats || {}; const ex = s.exams || [];
+        return [r.name, r.isAdmin ? "Admin" : "Learner", r.suspended ? "Suspended" : "Active", r.createdAt ? new Date(r.createdAt).toISOString().slice(0, 10) : "",
+          r.lastSignIn ? new Date(r.lastSignIn).toISOString().replace("T", " ").slice(0, 16) : "", lastActive(r) ? new Date(lastActive(r)).toISOString().slice(0, 10) : "",
+          s.attempted || 0, s.answers ? Math.round((100 * s.correct) / s.answers) : "", ex.length, ex.length ? ex[ex.length - 1].score : ""]; }));
+      const csv = "﻿" + lines.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+      const a = h("a", { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: `icu-board-users-${dayKey()}.csv` }); document.body.append(a); a.click(); a.remove();
+    }
+
+    const total = rows.length, newWeek = rows.filter((r) => ts(r.createdAt) > week).length, signWeek = rows.filter((r) => ts(r.lastSignIn) > week).length, susp = rows.filter((r) => r.suspended).length;
+    const listBox = h("div");
+    function draw() {
+      const q = S.q.trim().toLowerCase();
+      let list = rows.filter((r) => (!q || (r.name || "").toLowerCase().includes(q))
+        && (S.filter === "all" || (S.filter === "active" && !r.suspended) || (S.filter === "suspended" && r.suspended) || (S.filter === "admins" && r.isAdmin)));
+      const key = { joined: (r) => -ts(r.createdAt), signin: (r) => -ts(r.lastSignIn), attempted: (r) => -((r.stats || {}).attempted || 0), name: (r) => (r.name || "").toLowerCase() }[S.sort];
+      list = list.slice().sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0));
+      if (!list.length) { listBox.replaceChildren(empty(L("No matching users", "لا يوجد مستخدمون مطابقون"), "")); return; }
+      const btn = (label, fn, cls = "btn sm", disabled = false, title = "") => h("button", { class: cls, type: "button", onclick: fn, disabled, title: title || null }, label);
+      listBox.replaceChildren(h("div", { class: "table-wrap" }, h("table", { class: "t users-t" },
+        h("thead", {}, h("tr", {}, [L("Name", "الاسم"), L("Joined", "التسجيل"), L("Last sign-in", "آخر دخول"), L("Last practice", "آخر مذاكرة"), L("Attempted", "حلّ"), L("Accuracy", "الدقة"), L("Exams", "امتحانات"), ""].map((x) => h("th", {}, x)))),
+        h("tbody", {}, list.map((r) => {
+          const s = r.stats || {}, ex = s.exams || [];
+          return h("tr", { class: r.suspended ? "is-suspended" : null },
+            h("td", {}, h("div", { style: "font-weight:600" }, r.name || "—"), h("div", { class: "row", style: "gap:4px;margin-top:2px" },
+              r.isMe ? h("span", { class: "pill neutral" }, L("You", "أنت")) : null, r.isAdmin ? h("span", { class: "pill upd" }, L("Admin", "مسؤول")) : null,
+              r.suspended ? h("span", { class: "pill bad" }, L("Suspended", "موقوف")) : null)),
+            h("td", { class: "small" }, r.createdAt ? fmtDate(r.createdAt) : "—"),
+            h("td", { class: "small", title: r.lastSignIn ? new Date(r.lastSignIn).toLocaleString() : "" }, rel(ts(r.lastSignIn))),
+            h("td", { class: "small" }, rel(lastActive(r))),
+            h("td", { class: "tnum" }, String(s.attempted || 0)),
+            h("td", { class: "tnum" }, s.answers ? fmtPct(s.correct / s.answers) : "—"),
+            h("td", { class: "tnum", dir: "ltr", style: "text-align:end" }, ex.length ? `${ex.length} · ${ex[ex.length - 1].score}%` : "—"),
+            h("td", {}, h("div", { class: "row", style: "gap:4px;flex-wrap:nowrap" },
+              btn(L("PIN", "الرمز"), () => resetPin(r), "btn sm", false, L("Set a new PIN", "تعيين رمز جديد")),
+              btn(r.suspended ? L("Reactivate", "تفعيل") : L("Suspend", "إيقاف"), () => suspend(r), "btn sm", r.isMe || (r.isAdmin && !r.suspended), r.isAdmin ? L("Remove administrator rights first", "أزل صلاحية المسؤول أولًا") : ""),
+              btn(r.isAdmin ? L("Remove admin", "إزالة المسؤول") : L("Make admin", "مسؤول"), () => toggleAdmin(r), "btn sm ghost", r.isMe || r.suspended),
+              btn(L("Delete", "حذف"), () => remove(r), "btn sm danger", r.isMe || r.isAdmin, r.isAdmin ? L("Remove administrator rights first", "أزل صلاحية المسؤول أولًا") : ""))));
+        })))));
+    }
+    const search = h("input", { class: "input", type: "search", id: "usersQ", placeholder: L("Search by name", "ابحث بالاسم"), value: S.q, style: "max-width:240px", oninput: (e) => { S.q = e.target.value; draw(); } });
+    const seg = h("div", { class: "seg", role: "group", "aria-label": L("Filter", "تصفية") }, [["all", L("All", "الكل")], ["active", L("Active", "نشط")], ["suspended", L("Suspended", "موقوف")], ["admins", L("Admins", "المسؤولون")]].map(([v, l]) =>
+      h("button", { type: "button", "aria-pressed": String(S.filter === v), onclick: (e) => { S.filter = v; e.currentTarget.parentNode.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === e.currentTarget))); draw(); } }, l)));
+    const sort = h("select", { class: "input", "aria-label": L("Sort", "ترتيب"), style: "width:auto", onchange: (e) => { S.sort = e.target.value; draw(); } },
+      [["joined", L("Newest first", "الأحدث تسجيلًا")], ["signin", L("Last sign-in", "آخر دخول")], ["attempted", L("Most questions", "الأكثر حلًا")], ["name", L("Name", "الاسم")]].map(([v, l]) => h("option", { value: v, selected: S.sort === v }, l)));
+    draw();
+    return h("div", {},
+      pageHead(t("users"), L("Everyone who has created an account, their activity, and account controls.", "كل من سجّل حسابًا، ونشاطه، والتحكم في الحسابات."), [homeCrumb(), { label: t("users") }],
+        [h("button", { class: "btn", type: "button", onclick: exportCsv }, L("Export CSV", "تصدير CSV")), h("button", { class: "btn", type: "button", onclick: () => HS.render() }, L("Refresh", "تحديث"))]),
+      h("div", { class: "grid" },
+        h("section", { class: "card c-12" }, h("div", { class: "grid", style: "grid-template-columns:repeat(4,minmax(0,1fr));gap:12px" },
+          stat(L("Accounts", "الحسابات"), String(total), L("in total", "إجمالي")), stat(L("New", "جدد"), String(newWeek), L("last 7 days", "آخر ٧ أيام")),
+          stat(L("Signed in", "دخلوا"), String(signWeek), L("last 7 days", "آخر ٧ أيام")), stat(L("Suspended", "موقوفون"), String(susp), L("cannot sign in", "لا يستطيعون الدخول")))),
+        h("section", { class: "card c-12 stack" }, h("div", { class: "row", style: "gap:8px" }, search, seg, h("span", { class: "spacer" }), sort), listBox,
+          h("p", { class: "small muted", style: "margin:0" }, L("Notes and answers stay private: you see totals only. You cannot suspend or delete your own account or another administrator's.",
+            "الملاحظات والإجابات تظل خاصة: تظهر لك الإجماليات فقط. لا يمكن إيقاف أو حذف حسابك أو حساب مسؤول آخر.")))));
+  };
+
   /* ------------------------------------------------------------------ content QA (admin) */
   HS.views.qa = async function () {
     if (!store.isAdmin) return h("div", {}, pageHead(t("qa")), empty("Administrators only", "Content QA is available to editors of this dashboard."));
@@ -997,31 +1117,10 @@
     }
     // flags and cohort (cloud only)
     const flagsBox = h("div", {}, h("div", { class: "skel", style: "height:60px" }));
-    const learnersBox = window.HS_BACKEND && store.mode === "cloud" ? h("div", {}, h("div", { class: "skel", style: "height:60px" })) : null;
-    if (learnersBox) (async () => {
-      try {
-        const rows = (await window.HS_BACKEND.learners()).sort((x, y) => (y.stats ? y.stats.attempted : 0) - (x.stats ? x.stats.attempted : 0));
-        const tb = h("tbody", {}, rows.map((r) => {
-          const s = r.stats || {};
-          return h("tr", {}, h("td", {}, r.name || "—", r.isAdmin ? h("span", { class: "pill neutral", style: "margin-inline-start:6px" }, "Admin") : null),
-            h("td", { class: "tnum" }, String(s.attempted || 0)), h("td", { class: "tnum" }, s.answers ? fmtPct(s.correct / s.answers) : "—"),
-            h("td", { class: "tnum" }, (s.exams || []).length ? `${s.exams[s.exams.length - 1].score}%` : "—"),
-            h("td", { class: "small" }, s.updatedAt ? fmtDate(s.updatedAt) : "—"),
-            h("td", {}, h("button", { class: "btn sm", type: "button", onclick: () => resetPinDlg(r) }, "Reset PIN")));
-        }));
-        learnersBox.replaceChildren(rows.length ? h("div", { class: "table-wrap" }, h("table", { class: "t" }, h("thead", {}, h("tr", {}, ["Learner", "Attempted", "Accuracy", "Last exam", "Last active", ""].map((x) => h("th", {}, x)))), tb)) : empty("No learners yet", ""));
-      } catch (e) { learnersBox.replaceChildren(empty("Learners could not load", "")); }
-    })();
-    function resetPinDlg(r) {
-      const pin = h("input", { class: "input", id: "newPin", type: "text", inputmode: "numeric", maxlength: "8", placeholder: "4–8 digits" });
-      HS.confirm({ title: `Reset the PIN for ${r.name}`, ok: "Set new PIN",
-        body: h("div", { class: "stack" }, h("p", { class: "muted small", style: "margin:0" }, "Give the new PIN to the learner privately. Their progress is kept."), h("div", { class: "field" }, h("label", { for: "newPin" }, "New PIN"), pin)) })
-        .then(async (ok) => {
-          if (!ok) return;
-          try { await window.HS_BACKEND.resetPin(r.id, r.name, pin.value.trim()); HS.toast("PIN updated"); }
-          catch (e) { HS.toast((e && e.message) || "The PIN could not be changed."); }
-        });
-    }
+    // learner accounts are managed on the Users page
+    const learnersBox = window.HS_BACKEND && store.mode === "cloud" ? h("div", { class: "row", style: "justify-content:space-between" },
+      h("span", { class: "muted small" }, HS.lang === "ar" ? "قائمة الحسابات وتغيير الرموز والإيقاف والحذف في صفحة المستخدمين." : "Accounts, PIN resets, suspension and deletion are on the Users page."),
+      h("button", { class: "btn", type: "button", onclick: () => HS.go("users") }, HS.t("users") + " →")) : null;
     const cohortBox = h("div", {}, h("div", { class: "skel", style: "height:60px" }));
     let cohort = [];
     (async () => {
@@ -1064,7 +1163,7 @@
           h("div", { class: "chart-box", style: "height:200px" }, keyCanvas)),
         h("section", { class: "card c-6" }, h("div", { class: "card-head" }, h("h2", {}, "Flagged-question queue")), flagsBox),
         h("section", { class: "card c-6" }, h("div", { class: "card-head" }, h("h2", {}, "Cohort statistics"), h("span", { class: "small faint" }, "aggregate only; no personal notes")), cohortBox),
-        learnersBox ? h("section", { class: "card c-12" }, h("div", { class: "card-head" }, h("h2", {}, "Learners"), h("span", { class: "small faint" }, "totals only; notes stay private")), learnersBox) : null,
+        learnersBox ? h("section", { class: "card c-12" }, h("div", { class: "card-head" }, h("h2", {}, HS.t("users"))), learnersBox) : null,
         h("section", { class: "card c-12" }, h("div", { class: "card-head" }, h("h2", {}, "Calculator self-tests"), h("span", { class: "pill " + (testsOk === tests.length ? "ok" : "bad") }, `${testsOk}/${tests.length}`)),
           h("div", { class: "table-wrap" }, h("table", { class: "t" }, h("thead", {}, h("tr", {}, ["Calculator", "Example", "Expected", "Calculated", ""].map((x) => h("th", {}, x)))),
             h("tbody", {}, tests.map((x) => h("tr", {}, h("td", {}, x.name), h("td", { class: "small" }, x.note), h("td", { class: "tnum small" }, Object.entries(x.expect).map(([k, w]) => `${k}: ${w}`).join("; ")), h("td", { class: "tnum small" }, Object.keys(x.expect).map((k) => `${k}: ${x.got[k]}`).join("; ")), h("td", {}, h("span", { class: "pill " + (x.ok ? "ok" : "bad") }, x.ok ? "Pass" : "Fail")))))))),

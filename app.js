@@ -62,7 +62,7 @@
     en: {
       subtitle: "Adult Critical Care Fellowship Prep", collapse: "Collapse",
       dashboard: "Dashboard", bank: "Question Bank", exam: "Exam Simulation", topics: "Topics & Explanations", calculators: "Clinical Calculators",
-      trials: "Trials Library", references: "References", progress: "My Progress", settings: "Settings & Profile", qa: "Content QA", more: "More", home: "Home",
+      trials: "Trials Library", references: "References", progress: "My Progress", settings: "Settings & Profile", qa: "Content QA", users: "Users", more: "More", home: "Home",
       bankShort: "Bank", examShort: "Exam", progressShort: "Progress",
       searchPh: "Search questions, topics, trials, references, calculators",
       saved: "Saved", saving: "Saving…", offline: "Offline · will retry", local: "Preview · not saved", error: "Save failed", connecting: "Connecting",
@@ -88,7 +88,7 @@
     ar: {
       subtitle: "التحضير لزمالة الرعاية الحرجة للبالغين", collapse: "طيّ",
       dashboard: "لوحة المتابعة", bank: "بنك الأسئلة", exam: "محاكاة الامتحان", topics: "الموضوعات والشروح", calculators: "الحاسبات السريرية",
-      trials: "مكتبة التجارب", references: "المراجع", progress: "تقدّمي", settings: "الإعدادات والملف", qa: "مراجعة المحتوى", more: "المزيد", home: "الرئيسية",
+      trials: "مكتبة التجارب", references: "المراجع", progress: "تقدّمي", settings: "الإعدادات والملف", qa: "مراجعة المحتوى", users: "المستخدمين", more: "المزيد", home: "الرئيسية",
       bankShort: "البنك", examShort: "الامتحان", progressShort: "التقدّم",
       searchPh: "ابحث في الأسئلة والموضوعات والتجارب والمراجع والحاسبات",
       saved: "تم الحفظ", saving: "جارٍ الحفظ…", offline: "غير متصل · ستتم إعادة المحاولة", local: "معاينة · لا يتم الحفظ", error: "تعذّر الحفظ", connecting: "جارٍ الاتصال",
@@ -398,6 +398,7 @@
     progress: "M4 20V10M10 20V4M16 20v-7M22 20H2",
     settings: "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 14H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.1V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
     qa: "M9 12l2 2 4-4M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z",
+    users: "M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1M9 10a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7zM22 19v-1a4 4 0 0 0-3-3.9M16 3.1a3.5 3.5 0 0 1 0 6.8",
     more: "M5 12h.01M12 12h.01M19 12h.01",
     notebook: "M6 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6zM9 3v18M12 8h3M12 12h3M4 7h2M4 12h2M4 17h2",
     sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
@@ -418,7 +419,7 @@
   /** Full lockup: monogram | Dr. Hasnaa Shokr */
   HS.logoLockup = () => h("div", { class: "lockup", role: "img", "aria-label": "Dr. Hasnaa Shokr" },
     h("span", { class: "brand-mark" }, HS.logoMark()), h("span", { class: "lockup-sep" }), h("span", { class: "lockup-name" }, "Dr. Hasnaa Shokr"));
-  const NAV =["dashboard", "bank", "exam", "topics", "notebook", "progress", "calculators", "trials", "references", "settings", "qa"];
+  const NAV = ["dashboard", "bank", "exam", "topics", "notebook", "progress", "calculators", "trials", "references", "settings", "users", "qa"];
   function renderNav() {
     // short brand subtitle that also shows the active study track
     for (const el of document.querySelectorAll(".brand-sub")) el.textContent = `ICU Board · ${HS.trackLabel()}`;
@@ -431,6 +432,7 @@
     const nav = $("#nav"); nav.replaceChildren();
     for (const v of NAV) {
       if (v === "qa" && !store.isAdmin) continue;
+      if (v === "users" && !(store.isAdmin && window.HS_BACKEND && store.mode === "cloud")) continue; // website accounts only
       if (v === "settings") nav.append(h("div", { class: "rail-sep" }));
       nav.append(h("button", { class: "nav-item", type: "button", "data-view": v, "aria-current": HS.route && HS.route.view === v ? "page" : null, onclick: () => { closeDrawer(); go(v); } },
         svg(v), h("span", { class: "nav-label", text: HS.t(v) })));
@@ -497,6 +499,7 @@
           store.isAdmin ? h("div", { class: "pill neutral", style: "margin-top:4px" }, store.mode === "local" ? "Preview: admin tools visible" : "Administrator") : null),
         h("button", { type: "button", role: "menuitem", onclick: () => { menu.hidden = true; go("progress"); } }, HS.t("progress")),
         h("button", { type: "button", role: "menuitem", onclick: () => { menu.hidden = true; go("settings"); } }, HS.t("settings")),
+        store.isAdmin && window.HS_BACKEND && store.mode === "cloud" ? h("button", { type: "button", role: "menuitem", onclick: () => { menu.hidden = true; go("users"); } }, HS.t("users")) : null,
         store.isAdmin ? h("button", { type: "button", role: "menuitem", onclick: () => { menu.hidden = true; go("qa"); } }, HS.t("qa")) : null,
         window.HS_BACKEND && store.mode === "cloud" ? h("button", { type: "button", role: "menuitem", onclick: async () => {
           if (queue.busy()) { toast("Saving your last answers… try again in a moment."); return; }

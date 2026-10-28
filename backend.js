@@ -3,7 +3,7 @@
  *   ensureSignedIn() -> Promise<boolean>   shows the name + PIN screen until the person is signed in
  *   db                                     the same small document API the dashboard's store uses
  *   user                                   me() / can() like the artifact `user` capability
- *   signOut(), resetPin(userId, name, pin), learners()
+ *   signOut(), resetPin(userId, name, pin), learners(), setSuspended(id, bool), setAdmin(id, bool), deleteUser(id)
  * Accounts: the name is normalised and hashed into a private sign-in address; the PIN becomes the password.
  */
 (function () {
@@ -110,18 +110,20 @@
   };
 
   async function loadProfile() {
-    const { data, error } = await sb.from("profiles").select("display_name,is_admin").eq("id", session.user.id).maybeSingle();
+    const { data, error } = await sb.from("profiles").select("display_name,is_admin,suspended").eq("id", session.user.id).maybeSingle();
     if (error) fail(error);
-    profile = data || { display_name: (session.user.user_metadata || {}).display_name || "", is_admin: false };
+    profile = data || { display_name: (session.user.user_metadata || {}).display_name || "", is_admin: false, suspended: false };
   }
 
-  /* ---------- admin helpers */
+  /* ---------- admin helpers (each RPC re-checks is_admin() in the database) */
   async function learners() {
-    const [p, c] = await Promise.all([sb.from("profiles").select("id,display_name,is_admin,created_at"), sb.from("cohort").select("user_id,data,updated_at")]);
-    fail(p.error); fail(c.error);
-    const stats = new Map((c.data || []).map((r) => [r.user_id, r.data]));
-    return (p.data || []).map((r) => ({ id: r.id, name: r.display_name, isAdmin: r.is_admin, createdAt: r.created_at, stats: stats.get(r.id) || null }));
+    const { data, error } = await sb.rpc("admin_list_users"); fail(error);
+    return (data || []).map((r) => ({ id: r.id, name: r.display_name, isAdmin: r.is_admin, suspended: r.suspended, createdAt: r.created_at,
+      lastSignIn: r.last_sign_in_at, stats: r.stats || null, statsUpdatedAt: r.stats_updated_at, isMe: !!(session && r.id === session.user.id) }));
   }
+  async function setSuspended(userId, value) { const { error } = await sb.rpc("admin_set_suspended", { target: userId, value }); fail(error); }
+  async function setAdmin(userId, value) { const { error } = await sb.rpc("admin_set_admin", { target: userId, value }); fail(error); }
+  async function deleteUser(userId) { const { error } = await sb.rpc("admin_delete_user", { target: userId }); fail(error); }
   async function resetPin(userId, name, pin) {
     if (!validPin(pin)) throw { code: "invalid_argument", message: "The PIN must be 4 to 8 digits." };
     const { password } = await credentials(name, pin);
@@ -137,15 +139,17 @@
       forgot: "Forgot your PIN? Ask Dr. Hasnaa Shokr to reset it for you.", taken: "This name is already registered. Sign in, or add your middle or family name to make it unique.",
       wrong: "Name or PIN is not correct. Check the spelling of your name exactly as you registered it.", badName: "Enter your name (at least 3 letters).", badPin: "The PIN must be 4 to 8 digits.",
       mismatch: "The two PINs do not match.", offline: "Could not reach the server. Check your internet connection and try again.", busy: "Please wait…",
-      notConfigured: "The database is not connected yet, so progress cannot be saved. The site owner needs to add the Supabase settings to config.js.", preview: "Continue in preview (not saved)", lang: "العربية" },
+      notConfigured: "The database is not connected yet, so progress cannot be saved. The site owner needs to add the Supabase settings to config.js.", preview: "Continue in preview (not saved)", lang: "العربية",
+      suspended: "This account has been suspended. Contact Dr. Hasnaa Shokr if you think this is a mistake." },
     ar: { title: "تسجيل الدخول", sub: "ادخل باسمك ورمزك السري (PIN). يُحفظ تقدّمك على حسابك ويظهر لك على أي جهاز.",
       signin: "تسجيل الدخول", create: "إنشاء حساب", name: "الاسم بالكامل", pin: "الرمز السري (٤–٨ أرقام)", pin2: "أعد كتابة الرمز", go: "دخول", make: "إنشاء حسابي",
       forgot: "نسيت الرمز؟ اطلب من د. حسناء شكر إعادة تعيينه.", taken: "هذا الاسم مسجّل بالفعل. سجّل الدخول، أو أضف اسم الأب أو العائلة ليصبح الاسم مميزًا.",
       wrong: "الاسم أو الرمز غير صحيح. اكتب اسمك بنفس الطريقة التي سجّلت بها.", badName: "اكتب اسمك (٣ أحرف على الأقل).", badPin: "الرمز يجب أن يكون من ٤ إلى ٨ أرقام.",
       mismatch: "الرمزان غير متطابقين.", offline: "تعذّر الاتصال بالخادم. تأكد من الإنترنت وحاول مرة أخرى.", busy: "انتظر قليلًا…",
-      notConfigured: "قاعدة البيانات غير متصلة بعد، لذا لن يُحفظ التقدّم. يجب على مالك الموقع إضافة إعدادات Supabase إلى ملف config.js.", preview: "المتابعة في وضع المعاينة (بدون حفظ)", lang: "English" },
+      notConfigured: "قاعدة البيانات غير متصلة بعد، لذا لن يُحفظ التقدّم. يجب على مالك الموقع إضافة إعدادات Supabase إلى ملف config.js.", preview: "المتابعة في وضع المعاينة (بدون حفظ)", lang: "English",
+      suspended: "تم إيقاف هذا الحساب. تواصل مع د. حسناء شكر لو تعتقد أن هذا خطأ." },
   };
-  function showLogin() {
+  function showLogin(firstMsgKey) {
     return new Promise((resolve) => {
       let lang = (window.HS && HS.lang) || "en", tab = "signin";
       const ov = document.createElement("div");
@@ -227,10 +231,15 @@
               if (!data.session) { const r = await sb.auth.signInWithPassword({ email, password }); if (r.error) throw r.error; }
             } else {
               const { error } = await sb.auth.signInWithPassword({ email, password });
-              if (error) { if (/invalid|credentials/i.test(error.message) || error.status === 400) return draw(t.wrong, collect()); throw error; }
+              if (error) {
+                if (/banned/i.test(error.message) || error.code === "user_banned") return draw(t.suspended, collect());
+                if (/invalid|credentials/i.test(error.message) || error.status === 400) return draw(t.wrong, collect());
+                throw error;
+              }
             }
             const s = await sb.auth.getSession(); session = s.data.session;
             await loadProfile();
+            if (profile.suspended) { await sb.auth.signOut(); session = null; return draw(t.suspended, collect()); }
             if (stopTrace) stopTrace(); ov.remove(); resolve(true);
           } catch (ex) { console.error(ex); draw(/fetch|network/i.test(String(ex && ex.message)) ? t.offline : String((ex && ex.message) || t.offline), collect()); }
         };
@@ -239,7 +248,7 @@
         (vals.name ? fPin.input : fName.input).focus();
         function collect() { return { name: fName.input.value, pin: fPin.input.value, pin2: fPin2 ? fPin2.input.value : "" }; }
       }
-      draw("");
+      draw(firstMsgKey ? L[lang][firstMsgKey] : "");
     });
   }
   function el(tag, cls, style) { const e = document.createElement(tag); if (cls) e.className = cls; if (style) e.setAttribute("style", style); return e; }
@@ -254,10 +263,15 @@
     if (!configured) return showLogin();
     try {
       const s = await sb.auth.getSession(); session = s.data.session;
-      if (session) { await loadProfile(); return true; }
+      if (session) {
+        await loadProfile();
+        if (!profile.suspended) return true;
+        await sb.auth.signOut(); session = null; profile = null;
+        return showLogin("suspended");
+      }
     } catch (e) { console.warn("session restore failed", e); }
     return showLogin();
   }
 
-  window.HS_BACKEND = { configured, db, user, ensureSignedIn, signOut, learners, resetPin, label: "name and PIN" };
+  window.HS_BACKEND = { configured, db, user, ensureSignedIn, signOut, learners, resetPin, setSuspended, setAdmin, deleteUser, label: "name and PIN" };
 })();
