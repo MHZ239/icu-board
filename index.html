@@ -3,7 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Adult Critical Care Fellowship Prep: 1,000 practice questions, exam simulation, revision notes and clinical calculators.">
+<meta name="description" content="Adult Critical Care Fellowship Prep: 1,335 practice questions, exam simulation, revision notes and clinical calculators.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style>
 <title>DR.HASNAA SHOKR</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -40,6 +43,7 @@
   --radius: 8px;
   --rail: 248px;
   --header: 60px;
+  --logo-bar: #17466f; --logo-s: #1f8a85;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #0c151b; --surface: #121f27; --surface-2: #182933; --line: #263a46;
@@ -49,6 +53,7 @@
   --ok: #58c98f; --ok-soft: #12321f; --bad: #f2848a; --bad-soft: #3a1619; --warn: #e7b85a; --warn-soft: #362a10;
   --shadow: 0 1px 2px rgba(0,0,0,.4);
   --heat-0: #1b2c35; --heat-1: #1d4b55; --heat-2: #217180; --heat-3: #3196a8; --heat-4: #5fc3d3;
+  --logo-bar: #e3edf3; --logo-s: #3fb8b0;
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
@@ -59,6 +64,7 @@
   --ok: #58c98f; --ok-soft: #12321f; --bad: #f2848a; --bad-soft: #3a1619; --warn: #e7b85a; --warn-soft: #362a10;
   --shadow: 0 1px 2px rgba(0,0,0,.4);
   --heat-0: #1b2c35; --heat-1: #1d4b55; --heat-2: #217180; --heat-3: #3196a8; --heat-4: #5fc3d3;
+  --logo-bar: #e3edf3; --logo-s: #3fb8b0;
   color-scheme: dark;
 }
 :root[data-fs="s"] { --fs: 14px; } :root[data-fs="l"] { --fs: 17px; }
@@ -86,7 +92,15 @@ h3 { font-size: 1em; font-weight: 600; }
 .rail { position: sticky; top: 0; height: 100vh; height: 100dvh; overflow-y: auto; background: var(--surface); border-inline-end: 1px solid var(--line);
   padding: 16px 12px calc(16px + env(safe-area-inset-bottom, 0px)); padding-inline-start: max(12px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 4px; }
 .brand { display: flex; gap: 10px; align-items: center; padding: 4px 8px 16px; }
-.brand-mark { width: 36px; height: 36px; flex: none; border-radius: 9px; background: var(--primary); color: var(--primary-ink); display: grid; place-items: center; font-weight: 700; font-size: 13px; letter-spacing: .02em; }
+.brand-mark { width: 36px; height: 36px; flex: none; display: grid; place-items: center; }
+.brand-mark svg, .logo-mark { width: 100%; height: 100%; display: block; }
+.lg-bar { fill: var(--logo-bar); } .lg-s { fill: none; stroke: var(--logo-s); }
+.on-dark { --logo-bar: #e3edf3; --logo-s: #3fb8b0; }
+.lockup { display: flex; align-items: center; gap: 12px; }
+.lockup .brand-mark { width: 34px; height: 34px; }
+.lockup-sep { width: 1px; align-self: stretch; background: var(--line); }
+.lockup-name { font-family: var(--display); font-weight: 600; font-size: 1.25em; color: var(--logo-bar); letter-spacing: -.01em; white-space: nowrap; }
+:root[dir="rtl"] .lockup-name { direction: ltr; }
 .brand-name { font-weight: 700; letter-spacing: .06em; font-size: .92em; line-height: 1.2; }
 .brand-sub { font-size: .72em; color: var(--fg-3); line-height: 1.3; }
 .nav-item { display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 7px; color: var(--fg-2); text-decoration: none; border: 0; background: none; width: 100%; text-align: start; cursor: pointer; }
@@ -328,7 +342,26 @@ dialog::backdrop { background: rgba(6, 16, 22, .5); }
 .dlg-body { padding: 20px; overflow-y: auto; max-height: calc(100dvh - 140px); }
 .dlg-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .palette { width: min(720px, calc(100vw - 32px)); margin-top: 8vh; }
-.palette-input { width: 100%; border: 0; border-bottom: 1px solid var(--line); padding: 16px 18px; font-size: 1.05em; background: transparent; outline: none; }
+.palette-head { display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+.palette-input { flex: 1; min-width: 0; width: 100%; border: 0; padding: 16px 18px; font-size: 1.05em; background: transparent; outline: none; }
+.palette-input::-webkit-search-cancel-button { display: none; }
+.palette-close { flex: none; width: 38px; height: 38px; margin-inline-end: 10px; border: 0; border-radius: 8px; background: transparent; color: var(--fg-2); cursor: pointer; display: grid; place-items: center; }
+.palette-close:hover { background: var(--surface-2); color: var(--fg); }
+.palette-close svg { width: 18px; height: 18px; }
+
+/* first-run tour */
+.tour { position: fixed; inset: 0; z-index: 90; }
+.tour-dim { position: fixed; inset: 0; width: 100%; height: 100%; }
+.tour-dim path { fill: rgba(6, 16, 22, .62); fill-rule: evenodd; }
+.tour-spot { position: fixed; border-radius: 10px; outline: 2px solid var(--primary); outline-offset: 0; pointer-events: none; }
+.tour-spot.none { display: none; }
+.tour-card { position: fixed; width: min(360px, calc(100vw - 32px)); background: var(--surface); color: var(--fg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.3); padding: 18px; display: flex; flex-direction: column; gap: 10px; }
+.tour-card h2 { font-size: 1.15em; }
+.tour-card p { margin: 0; color: var(--fg-2); }
+.tour-foot { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.tour-dots { display: flex; gap: 4px; }
+.tour-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line); }
+.tour-dots i.on { background: var(--primary); }
 .palette-results { max-height: 60vh; overflow-y: auto; padding: 8px; }
 .pgroup h4 { margin: 10px 8px 4px; font-size: .74em; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); font-weight: 600; }
 .pitem { display: block; width: 100%; text-align: start; border: 0; background: none; padding: 8px 10px; border-radius: 6px; cursor: pointer; }
@@ -380,7 +413,7 @@ dialog::backdrop { background: rgba(6, 16, 22, .5); }
 <div class="app" id="app">
   <aside class="rail" id="rail" aria-label="Main navigation">
     <div class="brand">
-      <div class="brand-mark" aria-hidden="true">HS</div>
+      <div class="brand-mark" aria-hidden="true"><svg class="logo-mark" viewBox="0 0 64 64"><rect class="lg-bar" x="6" y="4" width="11" height="56" rx="2.2"/><rect class="lg-bar" x="47" y="4" width="11" height="56" rx="2.2"/><path class="lg-s" d="M40.4 18.66c-2.18-3.31-5.54-4.88-9.24-4.88-5.29 0-8.9 3.31-8.9 7.91 0 4.78 3.61 6.81 8.99 8.65 6.22 2.12 10.08 4.42 10.08 10.12 0 5.15-4.12 8.83-9.83 8.83-4.45 0-7.98-2.02-10.08-5.7" stroke-width="7" stroke-linecap="round"/></svg></div>
       <div class="brand-text"><div class="brand-name">DR.HASNAA SHOKR</div><div class="brand-sub" data-i18n="subtitle">Adult Critical Care Fellowship Prep</div></div>
     </div>
     <nav id="nav" class="stack" style="gap:2px"></nav>

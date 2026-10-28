@@ -165,7 +165,9 @@
         side.setAttribute("aria-hidden", "true");
         const trace = el("canvas");
         const brand = el("div", "", "display:flex;align-items:center;gap:12px");
-        brand.append(Object.assign(el("div", "brand-mark", "background:var(--mon-trace);color:#1b1404"), { textContent: "HS" }),
+        const mark = el("div", "brand-mark on-dark");
+        if (window.HS && HS.logoMark) mark.append(HS.logoMark()); else mark.textContent = "HS";
+        brand.append(mark,
           wrap(el("div"), Object.assign(el("div", "brand-name", "color:var(--mon-fg)"), { textContent: "DR.HASNAA SHOKR" }), Object.assign(el("div", "brand-sub", "color:var(--mon-dim)"), { textContent: lang === "ar" ? "ICU Board · الزمالة المصرية" : "ICU Board · Egyptian Fellowship" })));
         const head = el("h2");
         head.innerHTML = lang === "ar" ? "ذاكر بثبات <em>نفَسًا بعد نفَس</em> حتى يوم الامتحان." : "Steady preparation, <em>breath by breath</em>, until exam day.";
@@ -181,7 +183,8 @@
         ov.append(split);
         if (window.HS && HS.capno) stopTrace = HS.capno(trace, { period: 300 });
         const card = el("div", "", "width:min(420px,100%);display:flex;flex-direction:column;gap:16px");
-        const topBar = el("div", "", "display:flex;justify-content:flex-end");
+        const topBar = el("div", "", "display:flex;justify-content:space-between;align-items:center;gap:12px");
+        if (window.HS && HS.logoLockup) topBar.append(HS.logoLockup()); else topBar.append(el("span"));
         const langBtn = Object.assign(el("button", "btn ghost sm"), { type: "button", textContent: t.lang, onclick: () => { lang = lang === "ar" ? "en" : "ar"; try { localStorage.setItem("hs:lang", JSON.stringify(lang)); } catch { /* storage unavailable */ } draw("", configured ? collect() : {}); } });
         topBar.append(langBtn);
         const title = Object.assign(el("h1", "", "font-size:1.9em"), { id: "loginTitle", textContent: t.title });

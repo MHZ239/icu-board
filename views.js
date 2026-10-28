@@ -134,7 +134,7 @@
       return s;
     })();
     const active = activeSessions()[0];
-    const planCard = h("section", { class: "card c-5 raised" },
+    const planCard = h("section", { class: "card c-5 raised", "data-tour": "plan" },
       h("div", { class: "card-head" }, h("h2", {}, t("todayPlan")), planFrac >= 1 && planTotal ? h("span", { class: "pill ok" }, t("planDone")) : null),
       h("div", { class: "row", style: "gap:16px;flex-wrap:nowrap;align-items:center" }, ringSvg,
         h("div", { class: "plan-rows", style: "flex:1;min-width:0" },
@@ -931,7 +931,8 @@
           seg("lang", [["en", "English"], ["ar", "العربية"]], t("language")),
           seg("track", [["2", t("trackTwo")], ["1", t("trackOne")], ["all", t("trackAll")]], t("track")),
           h("p", { class: "small muted", style: "margin:0" }, t(HS.track() === "1" ? "trackOneNote" : HS.track() === "all" ? "trackAllNote" : "trackTwoNote")),
-          h("p", { class: "small muted", style: "margin:0" }, "Arabic changes interface labels and layout direction; medical content stays in English.")),
+          h("p", { class: "small muted", style: "margin:0" }, "Arabic changes interface labels and layout direction; medical content stays in English."),
+          h("div", {}, h("button", { class: "btn", type: "button", onclick: () => HS.startTour({ home: true }) }, HS.lang === "ar" ? "إعادة الجولة التعريفية" : "Replay the welcome tour"))),
         h("section", { class: "card c-6 stack" }, h("h2", {}, "Practice and exams"),
           h("div", { class: "row" }, num("examLen", "Default exam length", 20, 1000), num("minPerQ", "Minutes per question", 0.5, 3, "0.1"), num("passMark", "Pass mark (%)", 1, 100)),
           h("div", { class: "row" },

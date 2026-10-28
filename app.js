@@ -152,7 +152,7 @@
    * Cloud mode: the artifact `db` capability, private per user under data/users/<id>/.
    * Local mode (signed out / preview): in-memory only, clearly labelled as not saved.
    */
-  const DEFAULT_SETTINGS = { theme: "system", lang: HS.lang, fs: "m", examLen: 100, timer: true, shuffle: false, passMark: 60, minPerQ: 1.2, examDate: "", dailyNew: 0, track: "2" };
+  const DEFAULT_SETTINGS = { theme: "system", lang: HS.lang, fs: "m", examLen: 100, timer: true, shuffle: false, passMark: 60, minPerQ: 1.2, examDate: "", dailyNew: 0, track: "2", tourDone: false };
   const LEITNER_DAYS = [0, 1, 3, 7, 14, 30];
   const store = {
     mode: "local", db: null, user: null, uid: null, isAdmin: false, isOwner: false, me: null, canWriteShared: null,
@@ -401,10 +401,23 @@
     notebook: "M6 3h11a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H6zM9 3v18M12 8h3M12 12h3M4 7h2M4 12h2M4 17h2",
     sun: "M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M1 12h2M21 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4",
     moon: "M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z",
+    close: "M6 6l12 12M18 6L6 18",
   };
   const svg = (name, extra = "") => { const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "1.8"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round"); s.setAttribute("aria-hidden", "true"); if (extra) s.setAttribute("class", extra); const p = document.createElementNS("http://www.w3.org/2000/svg", "path"); p.setAttribute("d", ICON[name] || ""); s.append(p); return s; };
   HS.svg = svg;
-  const NAV = ["dashboard", "bank", "exam", "topics", "notebook", "progress", "calculators", "trials", "references", "settings", "qa"];
+  /** The HS monogram (two bars and an S); colours come from --logo-bar / --logo-s so it follows the theme. */
+  HS.logoMark = function () {
+    const NS = "http://www.w3.org/2000/svg", s = document.createElementNS(NS, "svg");
+    s.setAttribute("viewBox", "0 0 64 64"); s.setAttribute("class", "logo-mark"); s.setAttribute("aria-hidden", "true");
+    for (const x of [6, 47]) { const r = document.createElementNS(NS, "rect"); for (const [k, v] of [["class", "lg-bar"], ["x", x], ["y", 4], ["width", 11], ["height", 56], ["rx", 2.2]]) r.setAttribute(k, v); s.append(r); }
+    const p = document.createElementNS(NS, "path");
+    for (const [k, v] of [["class", "lg-s"], ["d", "M40.4 18.66c-2.18-3.31-5.54-4.88-9.24-4.88-5.29 0-8.9 3.31-8.9 7.91 0 4.78 3.61 6.81 8.99 8.65 6.22 2.12 10.08 4.42 10.08 10.12 0 5.15-4.12 8.83-9.83 8.83-4.45 0-7.98-2.02-10.08-5.7"], ["stroke-width", 7], ["stroke-linecap", "round"]]) p.setAttribute(k, v);
+    s.append(p); return s;
+  };
+  /** Full lockup: monogram | Dr. Hasnaa Shokr */
+  HS.logoLockup = () => h("div", { class: "lockup", role: "img", "aria-label": "Dr. Hasnaa Shokr" },
+    h("span", { class: "brand-mark" }, HS.logoMark()), h("span", { class: "lockup-sep" }), h("span", { class: "lockup-name" }, "Dr. Hasnaa Shokr"));
+  const NAV =["dashboard", "bank", "exam", "topics", "notebook", "progress", "calculators", "trials", "references", "settings", "qa"];
   function renderNav() {
     // short brand subtitle that also shows the active study track
     for (const el of document.querySelectorAll(".brand-sub")) el.textContent = `ICU Board · ${HS.trackLabel()}`;
@@ -636,18 +649,48 @@
   }
   HS.highlight = highlight;
 
+  /* Closing the search: ✕ button, Esc (native dialog cancel), a click on the backdrop, Ctrl+K again, or the phone's back
+     button (an extra history entry is pushed on open). Focus returns to whatever was focused before, unless we navigate. */
+  // the dialog's own "close" event is not dispatched reliably in every embedded browser, so closing is driven from here
+  const pal = { open: false, pushed: false, popped: false, waitPop: false, after: null, returnTo: null };
+  function runPalAfter() { const f = pal.after; pal.after = null; if (f) f(); }
+  function finishClose() {
+    if (!pal.open) return runPalAfter();
+    pal.open = false;
+    if (!pal.after && pal.returnTo && document.contains(pal.returnTo)) pal.returnTo.focus();
+    if (pal.pushed && !pal.popped) {
+      pal.pushed = false; pal.waitPop = true;
+      try { history.back(); } catch { pal.waitPop = false; }
+      setTimeout(() => { if (pal.waitPop) { pal.waitPop = false; runPalAfter(); } }, 400); // sandboxed frames may not fire popstate
+      if (pal.waitPop) return;
+    }
+    pal.pushed = false; pal.popped = false; runPalAfter();
+  }
+  function closePalette(after) { if (after) pal.after = after; if ($("#palette").open) $("#palette").close(); finishClose(); }
+  HS.closePalette = closePalette;
+  $("#palette").addEventListener("close", finishClose); // Esc via the browser, where the event does fire
+  $("#palette").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePalette(); } });
+  $("#palette").addEventListener("click", (e) => { if (e.target === e.currentTarget) closePalette(); }); // backdrop
+  window.addEventListener("popstate", () => {
+    if (pal.waitPop) { pal.waitPop = false; runPalAfter(); return; }
+    if (pal.open) { pal.popped = true; closePalette(); }
+  });
+
   function openSearchTarget(d) {
-    $("#palette").close();
-    if (d.type === "Questions") go("single", { id: d.id });
-    else if (d.type === "Topics") go("bank", { ids: d.ids, label: d.title });
-    else if (d.type === "Trials") go("trials", { q: d.id });
-    else if (d.type === "References") go("references", { q: String(d.id), focus: d.id });
-    else if (d.type === "Calculators") go("calculators", { id: d.id });
+    closePalette(() => {
+      if (d.type === "Questions") go("single", { id: d.id });
+      else if (d.type === "Topics") go("bank", { ids: d.ids, label: d.title });
+      else if (d.type === "Trials") go("trials", { q: d.id });
+      else if (d.type === "References") go("references", { q: String(d.id), focus: d.id });
+      else if (d.type === "Calculators") go("calculators", { id: d.id });
+    });
   }
   HS.openSearchTarget = openSearchTarget;
 
   function openPalette() {
     const dlg = $("#palette");
+    pal.returnTo = document.activeElement; pal.popped = false; pal.after = null; pal.open = true;
+    try { history.pushState({ hsPalette: 1 }, ""); pal.pushed = true; } catch { pal.pushed = false; }
     const filt = { set: 0, d: "", status: "", upd: false };
     const input = h("input", { class: "palette-input", id: "paletteInput", type: "search", placeholder: HS.t("searchPh"), "aria-label": "Search", autocomplete: "off" });
     const status = h("div", { class: "small faint", style: "padding:6px 18px" });
@@ -675,7 +718,7 @@
           box.append(h("button", { class: "pitem", type: "button", role: "option", "data-i": idx, onclick: () => openSearchTarget(d) },
             h("div", {}, highlight(d.title, terms)), h("div", { class: "s" }, highlight(d.sub.slice(0, 180), terms))));
         }
-        if (g === "Questions" && list.length > 10) box.append(h("button", { class: "pitem small", type: "button", onclick: () => { dlg.close(); go("bank", { ids: list.map((x) => x.d.id), label: `Search: “${q}”` }); } }, `Show all ${list.length} questions in the Question Bank →`));
+        if (g === "Questions" && list.length > 10) box.append(h("button", { class: "pitem small", type: "button", onclick: () => closePalette(() => go("bank", { ids: list.map((x) => x.d.id), label: `Search: “${q}”` })) }, `Show all ${list.length} questions in the Question Bank →`));
         results.append(box);
       }
       status.textContent = total ? `${total} result${total > 1 ? "s" : ""}${search.built ? "" : " · still indexing options and explanations"}` : "No results. Try fewer or different words.";
@@ -688,14 +731,15 @@
       else if (e.key === "ArrowUp") { sel = Math.max(sel - 1, 0); mark(); e.preventDefault(); }
       else if (e.key === "Enter" && flat[sel]) { openSearchTarget(flat[sel]); }
     });
-    dlg.replaceChildren(input, h("div", { class: "row", style: "padding:8px 18px;gap:8px" }, setSel, dSel, sSel, uBtn), status, results);
+    const closeBtn = h("button", { class: "palette-close", type: "button", "aria-label": HS.lang === "ar" ? "إغلاق البحث" : "Close search", title: HS.lang === "ar" ? "إغلاق (Esc)" : "Close (Esc)", onclick: () => closePalette() }, svg("close"));
+    dlg.replaceChildren(h("div", { class: "palette-head" }, input, closeBtn), h("div", { class: "row", style: "padding:8px 18px;gap:8px" }, setSel, dSel, sSel, uBtn), status, results);
     dlg.showModal(); input.focus(); run();
     if (!search.built) search.build().then(() => { if (dlg.open) run(); });
   }
   HS.openPalette = openPalette;
   $("#searchBtn").onclick = openPalette;
   document.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if ($("#palette").open) $("#palette").close(); else openPalette(); }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if ($("#palette").open) closePalette(); else openPalette(); }
   });
 
   /* ------------------------------------------------------------------ keyboard shortcuts overlay (?) */
@@ -759,6 +803,113 @@
     const c = new Chart(canvas, config); HS.charts.push(c); return c;
   };
 
+  /* ------------------------------------------------------------------ first-run tour
+   * Spotlights real elements one by one. Shown once (settings.tourDone, synced; prefs fallback for preview mode);
+   * Settings can replay it. Esc skips, arrow keys move (direction-aware), the drawer opens on phones when needed. */
+  const TOUR = [
+    { en: ["Welcome", "A one-minute tour of where everything is. You can skip it at any time and replay it later from Settings."],
+      ar: ["أهلًا بك", "جولة سريعة في دقيقة واحدة لتعرف مكان كل شيء. يمكنك تخطيها في أي وقت وإعادتها لاحقًا من الإعدادات."] },
+    { sel: "#trackSwitch", drawer: true, en: ["Study track", "Choose Part I, Part II or all questions. The home page, question bank and exams all follow this choice."],
+      ar: ["مسار المذاكرة", "اختر الجزء الأول أو الثاني أو كل الأسئلة. الصفحة الرئيسية وبنك الأسئلة والامتحانات كلها تتبع اختيارك."] },
+    { sel: '[data-tour="plan"]', view: "dashboard", en: ["Today's plan", "Your due reviews plus a daily share of new questions, sized to your exam date. One click starts it."],
+      ar: ["خطة اليوم", "مراجعاتك المستحقة مع حصة يومية من الأسئلة الجديدة، محسوبة حسب تاريخ امتحانك. ضغطة واحدة تبدأها."] },
+    { sel: '.nav-item[data-view="bank"]', drawer: true, en: ["Question bank", "Browse and filter every question by domain, topic, difficulty and status, then practise in tutor or timed mode."],
+      ar: ["بنك الأسئلة", "تصفّح كل الأسئلة وفلترها حسب المجال والموضوع والصعوبة والحالة، ثم تدرّب بوضع الشرح أو بالوقت."] },
+    { sel: '.nav-item[data-view="exam"]', drawer: true, en: ["Exam simulation", "A timed mock paper across all domains. Answers stay hidden until you submit, then you get a full analysis."],
+      ar: ["محاكاة الامتحان", "امتحان تجريبي بوقت محدد من كل المجالات. الإجابات لا تظهر حتى التسليم، ثم تحصل على تحليل كامل."] },
+    { sel: '.nav-item[data-view="topics"]', drawer: true, en: ["Topics and notes", "Revision notes for each domain: key concepts, high-yield numbers, guideline updates and landmark trials."],
+      ar: ["الموضوعات والشروح", "ملخصات مراجعة لكل مجال: المفاهيم الأساسية والأرقام المهمة وتحديثات الإرشادات وأهم التجارب."] },
+    { sel: '.nav-item[data-view="notebook"]', drawer: true, en: ["My notes", "Your bookmarked questions, personal notes and questions to review, in one place and saved to your account."],
+      ar: ["ملاحظاتي", "أسئلتك المحفوظة وملاحظاتك الشخصية والأسئلة التي تحتاج مراجعة، في مكان واحد ومحفوظة على حسابك."] },
+    { sel: "#searchBtn", en: ["Search and settings", "Search questions, topics, trials and calculators with Ctrl+K. Settings (in the menu) holds your exam date, language, theme and this tour."],
+      ar: ["البحث والإعدادات", "ابحث في الأسئلة والموضوعات والتجارب والحاسبات بـ Ctrl+K. ومن الإعدادات في القائمة تحدد تاريخ امتحانك واللغة والمظهر وتعيد هذه الجولة."] },
+  ];
+  let tourEl = null;
+  const sleep2 = (ms) => new Promise((r) => setTimeout(r, ms));
+  async function waitFor(sel, ms = 3000) { const end = Date.now() + ms; while (Date.now() < end) { const n = sel && document.querySelector(sel); if (n && n.getClientRects().length) return n; await sleep2(80); } return null; }
+  function tourSeen() { return !!(store.settings.tourDone || prefs.get("tourDone", false)); }
+  function endTour(saveDone) {
+    if (!tourEl) return;
+    tourEl.cleanup(); tourEl.remove(); tourEl = null;
+    if (mq.matches) closeDrawer();
+    if (saveDone) { prefs.set("tourDone", true); if (!store.settings.tourDone) store.saveSettings({ tourDone: true }); }
+  }
+  async function startTour() {
+    if (tourEl) return;
+    if ($("#palette").open) closePalette();
+    const AR = () => HS.lang === "ar";
+    const spot = h("div", { class: "tour-spot none" });
+    const title = h("h2", { id: "tourTitle" }), text = h("p", { id: "tourText" }), count = h("span", { class: "small faint tnum" });
+    const dots = h("div", { class: "tour-dots", "aria-hidden": "true" }, TOUR.map(() => h("i")));
+    const skip = h("button", { class: "btn ghost sm", type: "button", onclick: () => endTour(true) });
+    const back = h("button", { class: "btn sm", type: "button", onclick: () => show(i - 1) });
+    const next = h("button", { class: "btn primary sm", type: "button", onclick: () => (i < TOUR.length - 1 ? show(i + 1) : endTour(true)) });
+    const card = h("div", { class: "tour-card", role: "dialog", "aria-modal": "true", "aria-labelledby": "tourTitle", "aria-describedby": "tourText" },
+      h("div", { class: "row", style: "justify-content:space-between;gap:8px" }, count, dots), title, text,
+      h("div", { class: "tour-foot" }, skip, h("span", { class: "spacer" }), back, next));
+    const NS = "http://www.w3.org/2000/svg", dim = document.createElementNS(NS, "svg"), dimPath = document.createElementNS(NS, "path");
+    dim.setAttribute("class", "tour-dim"); dim.setAttribute("aria-hidden", "true"); dim.append(dimPath);
+    tourEl = h("div", { class: "tour" }, dim, spot, card);
+    document.body.append(tourEl);
+    let i = 0, target = null, token = 0;
+    function place() {
+      const vw = innerWidth, vh = innerHeight, cw = card.offsetWidth, ch = card.offsetHeight, m = 12;
+      dim.setAttribute("viewBox", `0 0 ${vw} ${vh}`);
+      const full = `M0 0H${vw}V${vh}H0Z`;
+      if (!target) { dimPath.setAttribute("d", full); spot.className = "tour-spot none"; card.style.left = Math.round((vw - cw) / 2) + "px"; card.style.top = Math.round((vh - ch) / 2) + "px"; return; }
+      const r = target.getBoundingClientRect(), pad = 6;
+      const x = r.left - pad, y = r.top - pad, w = r.width + pad * 2, hh = r.height + pad * 2;
+      dimPath.setAttribute("d", `${full}M${x} ${y}h${w}v${hh}h${-w}Z`); // even-odd fill leaves the target uncovered
+      spot.className = "tour-spot";
+      Object.assign(spot.style, { left: x + "px", top: y + "px", width: w + "px", height: hh + "px" });
+      let top, left;
+      if (vw < 600) { top = r.bottom + m + ch < vh ? r.bottom + m : Math.max(m, r.top - m - ch); left = (vw - cw) / 2; }
+      else {
+        const side = AR() ? r.left - m - cw : r.right + m; // beside the target, toward the content
+        if (r.width < vw * 0.35 && side >= m && side + cw <= vw - m) { left = side; top = Math.min(Math.max(m, r.top), vh - ch - m); }
+        else { top = r.bottom + m + ch < vh ? r.bottom + m : Math.max(m, r.top - m - ch); left = Math.min(Math.max(m, r.left), vw - cw - m); }
+      }
+      card.style.left = Math.round(left) + "px"; card.style.top = Math.round(top) + "px";
+    }
+    async function show(n) {
+      if (n < 0 || n >= TOUR.length) return;
+      i = n; const my = ++token; const st = TOUR[i];
+      const [tt, tx] = AR() ? st.ar : st.en;
+      title.textContent = tt; text.textContent = tx;
+      count.textContent = `${i + 1}/${TOUR.length}`;
+      [...dots.children].forEach((d, k) => d.classList.toggle("on", k === i));
+      skip.textContent = AR() ? "تخطي" : "Skip"; back.textContent = AR() ? "السابق" : "Back";
+      next.textContent = i === TOUR.length - 1 ? (AR() ? "ابدأ" : "Done") : (AR() ? "التالي" : "Next");
+      back.disabled = i === 0;
+      target = null; place();
+      if (st.view && HS.route && HS.route.view !== st.view) go(st.view);
+      if (mq.matches) { if (st.drawer) openDrawer(); else closeDrawer(); }
+      let node = st.sel ? await waitFor(st.sel) : null;
+      if (my !== token || !tourEl) return;
+      if (node) { node.scrollIntoView({ block: "center", inline: "nearest" }); await sleep2(mq.matches && st.drawer ? 260 : 120); }
+      if (my !== token || !tourEl) return;
+      target = node; place(); next.focus();
+    }
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); endTour(true); return; }
+      const fwd = AR() ? "ArrowLeft" : "ArrowRight", bwd = AR() ? "ArrowRight" : "ArrowLeft";
+      if (e.key === fwd) { e.preventDefault(); next.click(); } else if (e.key === bwd) { e.preventDefault(); show(i - 1); }
+      else if (e.key === "Tab") { // keep focus inside the card
+        const f = [...card.querySelectorAll("button:not([disabled])")]; const a = f.indexOf(document.activeElement);
+        e.preventDefault(); f[(a + (e.shiftKey ? -1 : 1) + f.length) % f.length].focus();
+      }
+    };
+    const onMove = () => { if (tourEl) place(); };
+    // live views re-render; if the spotlighted node was replaced, find its successor
+    const watch = setInterval(() => { if (target && !target.isConnected) { const n = document.querySelector(TOUR[i].sel); target = n && n.getClientRects().length ? n : null; place(); } }, 400);
+    document.addEventListener("keydown", onKey, true);
+    addEventListener("resize", onMove); addEventListener("scroll", onMove, true);
+    tourEl.cleanup = () => { clearInterval(watch); document.removeEventListener("keydown", onKey, true); removeEventListener("resize", onMove); removeEventListener("scroll", onMove, true); };
+    show(0);
+  }
+  HS.startTour = (opts = {}) => { if (opts.home) go("dashboard"); startTour(); };
+  HS.tourSeen = tourSeen;
+
   /* ------------------------------------------------------------------ boot */
   HS.boot = async function () {
     document.documentElement.lang = HS.lang; document.documentElement.dir = HS.lang === "ar" ? "rtl" : "ltr";
@@ -774,5 +925,6 @@
     go(TOP.has(hv) ? hv : "dashboard");
     store.onChange(debounce(() => { if (HS.route && HS.views[HS.route.view] && HS.views[HS.route.view].live) render(); }, 300));
     content.loadAll().then(() => search.build()).catch((e) => console.warn("background load", e));
+    if (!tourSeen()) setTimeout(() => { if (!tourSeen() && !document.querySelector("dialog[open]")) startTour(); }, 900);
   };
 })();
