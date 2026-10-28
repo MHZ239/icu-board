@@ -95,6 +95,11 @@ h3 { font-size: 1em; font-weight: 600; }
 .nav-item[aria-current="page"] { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
 .app.collapsed .nav-label, .app.collapsed .brand-text, .app.collapsed .rail-foot-text { display: none; }
 .rail-sep { height: 1px; background: var(--line); margin: 8px 6px; }
+.track-switch { padding: 0 2px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.track-seg { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
+.track-seg button { padding: 7px 4px; font-weight: 600; font-family: var(--display); }
+.app.collapsed .track-seg { grid-template-columns: 1fr; }
+.app.collapsed .track-seg button:not([aria-pressed="true"]) { display: none; }
 .rail-foot { margin-top: auto; }
 .main-col { min-width: 0; display: flex; flex-direction: column; }
 .topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 40; height: var(--header); background: var(--surface); border-bottom: 1px solid var(--line);

@@ -57,18 +57,25 @@
   HS.views.dashboard = async function () {
     await content.loadMeta();
     const AR = HS.lang === "ar";
-    const prog = store.progress, ids = Object.keys(prog);
+    // everything on the home page follows the active study track
+    const trackSet = new Set(HS.trackIds());
+    const trackTotal = trackSet.size;
+    const prog = Object.fromEntries(Object.entries(store.progress).filter(([id]) => trackSet.has(Number(id))));
+    const ids = Object.keys(prog);
     const attempted = ids.length;
     const totAtt = ids.reduce((a, k) => a + prog[k][0], 0), totCor = ids.reduce((a, k) => a + prog[k][1], 0);
     const acc = totAtt ? totCor / totAtt : null;
     const streak = HS.streakOf(store.activity);
     const weekStart = dayKey(new Date(Date.now() - 6 * 864e5));
     const weekSec = Object.entries(store.activity).filter(([k]) => k >= weekStart).reduce((a, [, v]) => a + v[2], 0);
-    const ds = domainStats();
+    const ds = Array.from({ length: 21 }, () => ({ att: 0, cor: 0, seen: 0, total: 0 }));
+    for (const id of trackSet) ds[Math.ceil(id / 50)].total += 1;
+    for (const [id, p] of Object.entries(prog)) { const d = ds[Math.ceil(id / 50)]; d.seen += 1; d.att += p[0]; d.cor += p[1]; }
     // readiness: recency-weighted accuracy of latest answers (2-week half-life) blended with domain coverage
     let wSum = 0, wOk = 0; const now = Date.now();
     for (const p of Object.values(prog)) { const w = Math.pow(0.5, (now - p[2]) / (14 * 864e5)); wSum += w; wOk += w * p[3]; }
-    const coverage = ds.slice(1).filter((d) => d.seen >= 5).length / 20;
+    const domsInTrack = ds.slice(1).filter((d) => d.total > 0);
+    const coverage = domsInTrack.filter((d) => d.seen >= Math.min(5, d.total)).length / Math.max(1, domsInTrack.length);
     const readiness = attempted >= 20 ? Math.round(100 * (0.75 * (wOk / wSum) + 0.25 * coverage)) : null;
     const first = store.me && store.me.name ? (store.me.name.split(/\s+/).find((w) => !/^(dr|prof|د|أ\.?د)\.?$/i.test(w) && !/\.$/.test(w)) || "") : "";
     const hr = new Date().getHours();
@@ -81,7 +88,7 @@
 
     // today's plan: due reviews + the daily share of unseen questions before the exam
     const due = smartQueue();
-    const unseen = []; for (let i = 1; i <= 1000; i++) if (!prog[i]) unseen.push(i);
+    const unseen = []; for (let i = 1; i <= 1000; i++) if (trackSet.has(i) && !prog[i]) unseen.push(i);
     const autoNew = daysLeft && daysLeft > 0 ? Math.ceil(unseen.length / daysLeft) : 40;
     const newTarget = Math.min(unseen.length, store.settings.dailyNew || Math.min(150, autoNew));
     const dueTarget = Math.min(due.length, 40);
@@ -113,7 +120,7 @@
       h("div", { class: "mon-readouts" },
         readout(t("readiness"), readiness == null ? "—" : String(readiness), readiness == null ? "" : "%", "amber"),
         readout(t("accuracy"), acc == null ? "—" : String(Math.round(acc * 100)), acc == null ? "" : "%"),
-        readout(t("attempted"), String(attempted), "/1000"),
+        readout(t("attempted"), String(attempted), "/" + trackTotal),
         readout(t("streak"), String(streak), AR ? "يوم" : streak === 1 ? "day" : "days"),
         readout(AR ? "اليوم" : "Today", String(doneToday), AR ? "سؤال" : "Qs"),
         readout(AR ? "٧ أيام" : "7 days", String(Math.round(weekSec / 60)), AR ? "دقيقة" : "min")));
@@ -141,7 +148,9 @@
 
     // question of the day (stable for the date; prefers a question not yet answered)
     const seed = [...dayKey()].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
-    let qid = (seed % 1000) + 1; for (let k = 0; k < 1000 && prog[qid] && Object.keys(prog).length < 1000; k++) qid = (qid % 1000) + 1;
+    const pool = [...trackSet].sort((a, b) => a - b);
+    let qi = seed % pool.length; for (let k = 0; k < pool.length && prog[pool[qi]] && attempted < trackTotal; k++) qi = (qi + 1) % pool.length;
+    const qid = pool[qi];
     const q = await content.q(qid);
     const qBox = h("div", { class: "opts" });
     const qFoot = h("div", { class: "row", style: "margin-top:10px" });
@@ -169,8 +178,8 @@
       return h("button", { class: "cell-d", type: "button", onclick: () => HS.go("topic", { n: s.set }), title: s.title },
         h("span", { class: "n" }, h("span", {}, String(s.set).padStart(2, "0")), h("span", { class: "dot", style: `background:${color}` })),
         h("span", { class: "t" }, s.title),
-        h("span", { class: "row", style: "justify-content:space-between;gap:4px" }, h("span", { class: "acc small" }, a == null ? "—" : Math.round(a * 100) + "%"), h("span", { class: "small faint tnum" }, `${d.seen}/50`)),
-        h("span", { class: "lvl" }, h("i", { style: `width:${d.seen * 2}%;background:var(--primary)` })));
+        h("span", { class: "row", style: "justify-content:space-between;gap:4px" }, h("span", { class: "acc small" }, a == null ? "—" : Math.round(a * 100) + "%"), h("span", { class: "small faint tnum" }, `${d.seen}/${d.total}`)),
+        h("span", { class: "lvl" }, h("i", { style: `width:${d.total ? (d.seen / d.total) * 100 : 0}%;background:var(--primary)` })));
     }));
 
     const weak = ds.map((d, i) => ({ i, ...d, acc: d.att ? d.cor / d.att : 0 })).slice(1).filter((d) => d.seen >= 5).sort((a, b) => a.acc - b.acc).slice(0, 3);
@@ -201,7 +210,7 @@
     return h("div", { class: "stack", style: "gap:16px" },
       banner, band,
       h("div", { class: "grid" }, planCard, qotd,
-        h("section", { class: "card c-12" }, h("div", { class: "card-head" }, h("h2", {}, t("domains")), h("span", { class: "legend" }, h("span", {}, h("i", { style: "background:var(--ok);border-radius:50%" }), "≥75%"), h("span", {}, h("i", { style: "background:var(--warn);border-radius:50%" }), "55–74%"), h("span", {}, h("i", { style: "background:var(--bad);border-radius:50%" }), "<55%"))), board),
+        h("section", { class: "card c-12" }, h("div", { class: "card-head" }, h("h2", {}, `${t("domains")} · ${HS.trackLabel()}`), h("span", { class: "legend" }, h("span", {}, h("i", { style: "background:var(--ok);border-radius:50%" }), "≥75%"), h("span", {}, h("i", { style: "background:var(--warn);border-radius:50%" }), "55–74%"), h("span", {}, h("i", { style: "background:var(--bad);border-radius:50%" }), "<55%"))), board),
         h("section", { class: "card c-4" }, h("div", { class: "card-head" }, h("h2", {}, t("weakest"))), weakBox),
         h("section", { class: "card c-4" }, h("div", { class: "card-head" }, h("h2", {}, t("recentExams")), h("button", { class: "btn ghost sm", type: "button", onclick: () => HS.go("progress") }, t("progress"))), examBox),
         h("section", { class: "card c-4" }, h("div", { class: "card-head" }, h("h2", {}, t("activity")), h("span", { class: "small faint" }, AR ? "١٢ أسبوعًا" : "12 weeks")), heat,
@@ -225,7 +234,8 @@
   function stat(label, value, sub, title) { return h("div", { class: "stat", title: title || null }, h("span", { class: "l" }, label), h("span", { class: "v" }, value), h("span", { class: "small faint" }, sub)); }
   function range(a, b) { const o = []; for (let i = a; i <= b; i++) o.push(i); return o; }
   function practiseDomain(n) {
-    const ids = range((n - 1) * 50 + 1, n * 50);
+    let ids = range((n - 1) * 50 + 1, n * 50).filter((i) => HS.inTrack(i));
+    if (!ids.length) ids = range((n - 1) * 50 + 1, n * 50);
     const order = ids.filter((i) => statusOf(i) === "incorrect").concat(ids.filter((i) => statusOf(i) === "unseen"), ids.filter((i) => statusOf(i) === "correct"));
     startSession({ mode: "tutor", title: `Practise: ${content.setTitle(n)}`, qids: relatedConflictFree(order).slice(0, 20) });
   }
@@ -252,7 +262,7 @@
     function filtered() {
       const subIds = S.sub ? new Set(S.sub.split(",").map(Number)) : null;
       const tx = S.text.trim().toLowerCase();
-      return content.lite.filter((q) => (!preset || preset.has(q.id)) && (!S.set || q.s === S.set) && (!subIds || subIds.has(q.id)) && (!S.d || q.d === S.d)
+      return content.lite.filter((q) => (preset ? preset.has(q.id) : HS.inTrack(q.id)) && (!S.set || q.s === S.set) && (!subIds || subIds.has(q.id)) && (!S.d || q.d === S.d)
         && (!S.upd || q.r === "g") && (!S.status || HS.matchStatus(q.id, S.status)) && (!tx || q.x.toLowerCase().includes(tx) || String(q.id) === tx));
     }
     let current = [];
@@ -287,7 +297,8 @@
         [h("button", { class: "btn", type: "button", onclick: () => due.length ? startSession({ mode: "review", title: "Smart review", qids: due.slice(0, 25) }) : HS.toast("Nothing is due for review yet. Answer some questions first.") }, `${t("review")} (${due.length} due)`),
          h("button", { class: "btn", type: "button", onclick: () => timedDialog(current.map((q) => q.id), params.label || describeFilter()) }, t("timed") + "…"),
          h("button", { class: "btn primary", type: "button", onclick: startTutor }, `${t("tutor")}: start`)]),
-      preset ? h("div", { class: "banner", style: "margin-bottom:12px" }, h("span", {}, `Showing ${params.label || "a selection"}.`), h("span", { class: "spacer" }), h("button", { class: "btn sm", type: "button", onclick: () => HS.go("bank") }, "Show the whole bank")) : null,
+      preset ? h("div", { class: "banner", style: "margin-bottom:12px" }, h("span", {}, `Showing ${params.label || "a selection"}.`), h("span", { class: "spacer" }), h("button", { class: "btn sm", type: "button", onclick: () => HS.go("bank") }, "Show the whole bank"))
+        : HS.track() !== "all" ? h("div", { class: "banner", style: "margin-bottom:12px" }, h("span", { class: "pill upd" }, HS.trackLabel()), h("span", {}, t(HS.track() === "1" ? "trackOneNote" : "trackTwoNote"))) : null,
       h("div", { class: "card sticky-head", style: "margin-bottom:12px" },
         h("div", { class: "grid", style: "gap:12px" },
           h("div", { class: "field c-4" }, h("label", { for: "bankSet" }, "Domain (set)"), setSel),
@@ -304,7 +315,7 @@
   };
   function smartQueue() {
     const now = Date.now();
-    const items = Object.entries(store.progress).map(([id, p]) => ({ id: Number(id), p })).filter(({ p }) => p[5] <= now && (p[3] === 0 || p[7] === 1 || p[4] < 5));
+    const items = Object.entries(store.progress).map(([id, p]) => ({ id: Number(id), p })).filter(({ id, p }) => HS.inTrack(id) && p[5] <= now && (p[3] === 0 || p[7] === 1 || p[4] < 5));
     items.sort((a, b) => (a.p[3] - b.p[3]) || (a.p[7] - b.p[7]) || (a.p[5] - b.p[5]));
     return relatedConflictFree(items.map((x) => x.id));
   }
@@ -514,21 +525,26 @@
     const pass = h("input", { class: "input", id: "exPass", type: "number", min: "1", max: "100", value: String(st.passMark), style: "max-width:140px" });
     const unseenFirst = h("input", { type: "checkbox", id: "exUnseen" });
     const summary = h("p", { class: "muted" });
-    function upd() { summary.textContent = `${len} questions · ${fmtDur(len * Number(mpq.value || 1.2) * 60)} total · about ${Math.floor(len / 20)}–${Math.ceil(len / 20)} questions from each of the 20 domains.`; }
+    const trackN = HS.trackIds().length;
+    function upd() { const n = Math.min(len, trackN); summary.textContent = `${HS.trackLabel()} · ${n} questions · ${fmtDur(n * Number(mpq.value || 1.2) * 60)} total · spread across the domains in proportion to the ${trackN} questions in this track.`; }
     upd();
     function begin() {
-      const per = Math.floor(len / 20); let extra = len - per * 20;
-      const doms = shuffle(range(1, 20)); const pick = [];
-      for (const d of doms) {
-        let pool = range((d - 1) * 50 + 1, d * 50);
-        pool = unseenFirst.checked ? shuffle(pool.filter((i) => !store.progress[i])).concat(shuffle(pool.filter((i) => store.progress[i]))) : shuffle(pool);
-        const want = per + (extra > 0 ? 1 : 0); if (extra > 0) extra--;
-        pick.push(...pool.slice(0, Math.min(want + 2, 50)).slice(0, want));
-      }
+      // blueprint: questions from the active study track, spread across domains in proportion to what each domain has
+      const pools = range(1, 20).map((d) => range((d - 1) * 50 + 1, d * 50).filter((i) => HS.inTrack(i)));
+      const available = pools.reduce((a, p) => a + p.length, 0);
+      len = Math.min(len, available);
+      const quota = pools.map((p) => Math.floor((len * p.length) / available));
+      let extra = len - quota.reduce((a, b) => a + b, 0);
+      for (const d of shuffle(range(0, 19))) { if (extra <= 0) break; if (quota[d] < pools[d].length) { quota[d]++; extra--; } }
+      const pick = [];
+      pools.forEach((p, d) => {
+        const pool = unseenFirst.checked ? shuffle(p.filter((i) => !store.progress[i])).concat(shuffle(p.filter((i) => store.progress[i]))) : shuffle(p);
+        pick.push(...pool.slice(0, quota[d]));
+      });
       let qids = relatedConflictFree(shuffle(pick));
-      if (qids.length < len) { const have = new Set(qids); for (const i of shuffle(range(1, 1000))) { if (qids.length >= len) break; if (!have.has(i)) { qids = relatedConflictFree(qids.concat(i)); have.add(i); } } }
+      if (qids.length < len) { const have = new Set(qids); for (const i of shuffle(pools.flat())) { if (qids.length >= len) break; if (!have.has(i)) { qids = relatedConflictFree(qids.concat(i)); have.add(i); } } }
       store.saveSettings({ examLen: [50, 100, 200].includes(len) ? len : st.examLen, minPerQ: Number(mpq.value) || 1.2, passMark: Math.max(1, Math.min(100, Number(pass.value) || 60)) });
-      startSession({ mode: "exam", title: `Exam simulation · ${qids.length} questions`, qids: qids.slice(0, len), limitSec: Math.round(len * (Number(mpq.value) || 1.2) * 60) });
+      startSession({ mode: "exam", title: `${HS.trackLabel()} · ${Math.min(qids.length, len)} questions`, qids: qids.slice(0, len), limitSec: Math.round(len * (Number(mpq.value) || 1.2) * 60) });
     }
     const act = activeSessions().filter((s) => s.mode === "exam" || s.mode === "timed");
     const past = doneExams().filter((s) => s.mode === "exam");
@@ -913,6 +929,8 @@
           seg("theme", [["system", t("system")], ["light", t("light")], ["dark", t("dark")]], t("theme")),
           seg("fs", [["s", "Small"], ["m", "Medium"], ["l", "Large"]], t("fontSize")),
           seg("lang", [["en", "English"], ["ar", "العربية"]], t("language")),
+          seg("track", [["2", t("trackTwo")], ["1", t("trackOne")], ["all", t("trackAll")]], t("track")),
+          h("p", { class: "small muted", style: "margin:0" }, t(HS.track() === "1" ? "trackOneNote" : HS.track() === "all" ? "trackAllNote" : "trackTwoNote")),
           h("p", { class: "small muted", style: "margin:0" }, "Arabic changes interface labels and layout direction; medical content stays in English.")),
         h("section", { class: "card c-6 stack" }, h("h2", {}, "Practice and exams"),
           h("div", { class: "row" }, num("examLen", "Default exam length", 20, 1000), num("minPerQ", "Minutes per question", 0.5, 3, "0.1"), num("passMark", "Pass mark (%)", 1, 100)),

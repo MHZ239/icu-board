@@ -166,7 +166,7 @@
         const trace = el("canvas");
         const brand = el("div", "", "display:flex;align-items:center;gap:12px");
         brand.append(Object.assign(el("div", "brand-mark", "background:var(--mon-trace);color:#1b1404"), { textContent: "HS" }),
-          wrap(el("div"), Object.assign(el("div", "brand-name", "color:var(--mon-fg)"), { textContent: "DR.HASNAA SHOKR" }), Object.assign(el("div", "brand-sub", "color:var(--mon-dim)"), { textContent: lang === "ar" ? "التحضير لزمالة الرعاية الحرجة للبالغين" : "Adult Critical Care Fellowship Prep" })));
+          wrap(el("div"), Object.assign(el("div", "brand-name", "color:var(--mon-fg)"), { textContent: "DR.HASNAA SHOKR" }), Object.assign(el("div", "brand-sub", "color:var(--mon-dim)"), { textContent: lang === "ar" ? "ICU Board · الزمالة المصرية" : "ICU Board · Egyptian Fellowship" })));
         const head = el("h2");
         head.innerHTML = lang === "ar" ? "ذاكر بثبات <em>نفَسًا بعد نفَس</em> حتى يوم الامتحان." : "Steady preparation, <em>breath by breath</em>, until exam day.";
         const facts = el("div", "facts");

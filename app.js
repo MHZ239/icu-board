@@ -73,7 +73,9 @@
       easy: "Easy", medium: "Medium", hard: "Hard", unseen: "Unseen", bookmarked: "Bookmarked", flagged: "Flagged",
       theme: "Theme", system: "System", light: "Light", dark: "Dark", language: "Interface language", fontSize: "Font size",
       reset: "Reset my progress", signedOut: "Sign in to save progress",
-      notebook: "My Notebook", notebookShort: "Notebook",
+      notebook: "My Notes", notebookShort: "Notes",
+      track: "Study track", trackOne: "Part I", trackTwo: "Part II", trackAll: "All parts",
+      trackOneNote: "Part I: applied basic sciences (about 140 questions so far).", trackTwoNote: "Part II: clinical critical care (about 860 questions).", trackAllNote: "All 1,000 questions.",
       morning: "Good morning", afternoon: "Good afternoon", evening: "Good evening",
       daysLeft: "days to your exam", setExam: "Set your exam date", examToday: "Your exam is today", examPassed: "Exam date has passed",
       readiness: "Readiness", attempted: "Attempted", accuracy: "Accuracy", streak: "Streak", studyWeek: "Study time · 7 days",
@@ -97,7 +99,9 @@
       easy: "سهل", medium: "متوسط", hard: "صعب", unseen: "لم يُعرض", bookmarked: "محفوظ", flagged: "مُبلَّغ عنه",
       theme: "المظهر", system: "النظام", light: "فاتح", dark: "داكن", language: "لغة الواجهة", fontSize: "حجم الخط",
       reset: "إعادة ضبط تقدّمي", signedOut: "سجّل الدخول لحفظ التقدّم",
-      notebook: "دفتري", notebookShort: "دفتري",
+      notebook: "ملاحظاتي", notebookShort: "ملاحظاتي",
+      track: "مسار المذاكرة", trackOne: "الجزء الأول", trackTwo: "الجزء الثاني", trackAll: "كل الأجزاء",
+      trackOneNote: "الجزء الأول: العلوم الأساسية التطبيقية (حوالي ١٤٠ سؤالًا حاليًا).", trackTwoNote: "الجزء الثاني: العناية المركزة الإكلينيكية (حوالي ٨٦٠ سؤالًا).", trackAllNote: "كل الأسئلة الـ ١٠٠٠.",
       morning: "صباح الخير", afternoon: "مساء الخير", evening: "مساء الخير",
       daysLeft: "يومًا على امتحانك", setExam: "حدّد تاريخ امتحانك", examToday: "امتحانك اليوم", examPassed: "مرّ تاريخ الامتحان",
       readiness: "الجاهزية", attempted: "تمت محاولتها", accuracy: "الدقة", streak: "أيام متتالية", studyWeek: "وقت المذاكرة · ٧ أيام",
@@ -145,7 +149,7 @@
    * Cloud mode: the artifact `db` capability, private per user under data/users/<id>/.
    * Local mode (signed out / preview): in-memory only, clearly labelled as not saved.
    */
-  const DEFAULT_SETTINGS = { theme: "system", lang: HS.lang, fs: "m", examLen: 100, timer: true, shuffle: false, passMark: 60, minPerQ: 1.2, examDate: "", dailyNew: 0 };
+  const DEFAULT_SETTINGS = { theme: "system", lang: HS.lang, fs: "m", examLen: 100, timer: true, shuffle: false, passMark: 60, minPerQ: 1.2, examDate: "", dailyNew: 0, track: "2" };
   const LEITNER_DAYS = [0, 1, 3, 7, 14, 30];
   const store = {
     mode: "local", db: null, user: null, uid: null, isAdmin: false, isOwner: false, me: null, canWriteShared: null,
@@ -308,6 +312,12 @@
   };
   HS.store = store;
 
+  /* study track: "2" = Part II (clinical, default), "1" = Part I (applied basic science), "all" */
+  HS.track = () => store.settings.track || "2";
+  HS.inTrack = (id) => { const tr = HS.track(); if (tr === "all") return true; const l = content.liteById.get(Number(id)); return !!l && l.p === tr; };
+  HS.trackIds = () => content.lite.filter((q) => HS.inTrack(q.id)).map((q) => q.id);
+  HS.trackLabel = (tr = HS.track()) => (tr === "all" ? HS.t("trackAll") : tr === "1" ? HS.t("trackOne") : HS.t("trackTwo"));
+
   /** Aggregate summary shared with admins (no notes, no flags text). */
   function summarize() {
     const byDomain = {};
@@ -393,6 +403,14 @@
   HS.svg = svg;
   const NAV = ["dashboard", "bank", "exam", "topics", "notebook", "progress", "calculators", "trials", "references", "settings", "qa"];
   function renderNav() {
+    // short brand subtitle that also shows the active study track
+    for (const el of document.querySelectorAll(".brand-sub")) el.textContent = `ICU Board · ${HS.trackLabel()}`;
+    let sw = $("#trackSwitch");
+    if (!sw) { sw = h("div", { id: "trackSwitch", class: "track-switch" }); $("#nav").before(sw); }
+    sw.replaceChildren(h("div", { class: "eyebrow nav-label", style: "padding:0 8px 4px" }, HS.t("track")),
+      h("div", { class: "seg track-seg", role: "group", "aria-label": HS.t("track") }, [["2", "trackTwo"], ["1", "trackOne"], ["all", "trackAll"]].map(([v, k]) =>
+        h("button", { type: "button", "aria-pressed": String(HS.track() === v), title: HS.t(k + "Note"), onclick: () => { if (HS.track() !== v) { store.saveSettings({ track: v }); toast(HS.t(v === "all" ? "trackAllNote" : v === "1" ? "trackOneNote" : "trackTwoNote")); render(); } } },
+          v === "all" ? (HS.lang === "ar" ? "الكل" : "All") : v === "1" ? "I" : "II"))));
     const nav = $("#nav"); nav.replaceChildren();
     for (const v of NAV) {
       if (v === "qa" && !store.isAdmin) continue;
@@ -406,7 +424,7 @@
         svg(v), h("span", { text: HS.t(v === "dashboard" ? "home" : v === "more" ? "more" : v + "Short") })));
     }
     $("#collapseBtn").onclick = () => { const c = !$("#app").classList.contains("collapsed"); $("#app").classList.toggle("collapsed", c); prefs.set("collapsed", c); };
-    for (const el of document.querySelectorAll("[data-i18n]")) el.textContent = HS.t(el.dataset.i18n);
+    for (const el of document.querySelectorAll("[data-i18n]:not(.brand-sub)")) el.textContent = HS.t(el.dataset.i18n);
   }
   function openDrawer() { $("#app").classList.add("drawer"); }
   function closeDrawer() { $("#app").classList.remove("drawer"); }
